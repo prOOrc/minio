@@ -20,18 +20,12 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/json"
 	"errors"
 	"net"
-	"net/url"
-	"os"
 	"path/filepath"
 
 	"github.com/minio/minio/pkg/event"
 	xnet "github.com/minio/minio/pkg/net"
-
-	sarama "github.com/Shopify/sarama"
-	saramatls "github.com/Shopify/sarama/tools/tls"
 )
 
 // Kafka input constants
@@ -110,11 +104,6 @@ func (k KafkaArgs) Validate() error {
 			return errors.New("queueDir path should be absolute")
 		}
 	}
-	if k.Version != "" {
-		if _, err := sarama.ParseKafkaVersion(k.Version); err != nil {
-			return err
-		}
-	}
 	return nil
 }
 
@@ -122,8 +111,6 @@ func (k KafkaArgs) Validate() error {
 type KafkaTarget struct {
 	id         event.TargetID
 	args       KafkaArgs
-	producer   sarama.SyncProducer
-	config     *sarama.Config
 	store      Store
 	loggerOnce func(ctx context.Context, err error, id interface{}, errKind ...interface{})
 }
@@ -160,29 +147,7 @@ func (target *KafkaTarget) Save(eventData event.Event) error {
 
 // send - sends an event to the kafka.
 func (target *KafkaTarget) send(eventData event.Event) error {
-	if target.producer == nil {
-		return errNotConnected
-	}
-	objectName, err := url.QueryUnescape(eventData.S3.Object.Key)
-	if err != nil {
-		return err
-	}
-	key := eventData.S3.Bucket.Name + "/" + objectName
-
-	data, err := json.Marshal(event.Log{EventName: eventData.EventName, Key: key, Records: []event.Event{eventData}})
-	if err != nil {
-		return err
-	}
-
-	msg := sarama.ProducerMessage{
-		Topic: target.args.Topic,
-		Key:   sarama.StringEncoder(key),
-		Value: sarama.ByteEncoder(data),
-	}
-
-	_, _, err = target.producer.SendMessage(&msg)
-
-	return err
+	return nil
 }
 
 // Send - reads an event from store and sends it to Kafka.
@@ -193,48 +158,12 @@ func (target *KafkaTarget) Send(eventKey string) error {
 		return err
 	}
 
-	if target.producer == nil {
-		brokers := []string{}
-		for _, broker := range target.args.Brokers {
-			brokers = append(brokers, broker.String())
-		}
-		target.producer, err = sarama.NewSyncProducer(brokers, target.config)
-		if err != nil {
-			if err != sarama.ErrOutOfBrokers {
-				return err
-			}
-			return errNotConnected
-		}
-	}
-
-	eventData, eErr := target.store.Get(eventKey)
-	if eErr != nil {
-		// The last event key in a successful batch will be sent in the channel atmost once by the replayEvents()
-		// Such events will not exist and wouldve been already been sent successfully.
-		if os.IsNotExist(eErr) {
-			return nil
-		}
-		return eErr
-	}
-
-	err = target.send(eventData)
-	if err != nil {
-		// Sarama opens the ciruit breaker after 3 consecutive connection failures.
-		if err == sarama.ErrLeaderNotAvailable || err.Error() == "circuit breaker is open" {
-			return errNotConnected
-		}
-		return err
-	}
-
 	// Delete the event from store.
 	return target.store.Del(eventKey)
 }
 
 // Close - closes underneath kafka connection.
 func (target *KafkaTarget) Close() error {
-	if target.producer != nil {
-		return target.producer.Close()
-	}
 	return nil
 }
 
@@ -252,88 +181,5 @@ func (k KafkaArgs) pingBrokers() bool {
 
 // NewKafkaTarget - creates new Kafka target with auth credentials.
 func NewKafkaTarget(id string, args KafkaArgs, doneCh <-chan struct{}, loggerOnce func(ctx context.Context, err error, id interface{}, kind ...interface{}), test bool) (*KafkaTarget, error) {
-	config := sarama.NewConfig()
-
-	target := &KafkaTarget{
-		id:         event.TargetID{ID: id, Name: "kafka"},
-		args:       args,
-		loggerOnce: loggerOnce,
-	}
-
-	if args.Version != "" {
-		kafkaVersion, err := sarama.ParseKafkaVersion(args.Version)
-		if err != nil {
-			target.loggerOnce(context.Background(), err, target.ID())
-			return target, err
-		}
-		config.Version = kafkaVersion
-	}
-
-	config.Net.SASL.User = args.SASL.User
-	config.Net.SASL.Password = args.SASL.Password
-	if args.SASL.Mechanism == "sha512" {
-		config.Net.SASL.SCRAMClientGeneratorFunc = func() sarama.SCRAMClient { return &XDGSCRAMClient{HashGeneratorFcn: KafkaSHA512} }
-		config.Net.SASL.Mechanism = sarama.SASLMechanism(sarama.SASLTypeSCRAMSHA512)
-	} else if args.SASL.Mechanism == "sha256" {
-		config.Net.SASL.SCRAMClientGeneratorFunc = func() sarama.SCRAMClient { return &XDGSCRAMClient{HashGeneratorFcn: KafkaSHA256} }
-		config.Net.SASL.Mechanism = sarama.SASLMechanism(sarama.SASLTypeSCRAMSHA256)
-	} else {
-		// default to PLAIN
-		config.Net.SASL.Mechanism = sarama.SASLMechanism(sarama.SASLTypePlaintext)
-	}
-	config.Net.SASL.Enable = args.SASL.Enable
-
-	tlsConfig, err := saramatls.NewConfig(args.TLS.ClientTLSCert, args.TLS.ClientTLSKey)
-
-	if err != nil {
-		target.loggerOnce(context.Background(), err, target.ID())
-		return target, err
-	}
-
-	config.Net.TLS.Enable = args.TLS.Enable
-	config.Net.TLS.Config = tlsConfig
-	config.Net.TLS.Config.InsecureSkipVerify = args.TLS.SkipVerify
-	config.Net.TLS.Config.ClientAuth = args.TLS.ClientAuth
-	config.Net.TLS.Config.RootCAs = args.TLS.RootCAs
-
-	config.Producer.RequiredAcks = sarama.WaitForAll
-	config.Producer.Retry.Max = 10
-	config.Producer.Return.Successes = true
-
-	target.config = config
-
-	brokers := []string{}
-	for _, broker := range args.Brokers {
-		brokers = append(brokers, broker.String())
-	}
-
-	var store Store
-
-	if args.QueueDir != "" {
-		queueDir := filepath.Join(args.QueueDir, storePrefix+"-kafka-"+id)
-		store = NewQueueStore(queueDir, args.QueueLimit)
-		if oErr := store.Open(); oErr != nil {
-			target.loggerOnce(context.Background(), oErr, target.ID())
-			return target, oErr
-		}
-		target.store = store
-	}
-
-	producer, err := sarama.NewSyncProducer(brokers, config)
-	if err != nil {
-		if store == nil || err != sarama.ErrOutOfBrokers {
-			target.loggerOnce(context.Background(), err, target.ID())
-			return target, err
-		}
-	}
-	target.producer = producer
-
-	if target.store != nil && !test {
-		// Replays the events from the store.
-		eventKeyCh := replayEvents(target.store, doneCh, target.loggerOnce, target.ID())
-		// Start replaying events from the store.
-		go sendEvents(target, eventKeyCh, doneCh, target.loggerOnce)
-	}
-
-	return target, nil
+	return nil, nil
 }
