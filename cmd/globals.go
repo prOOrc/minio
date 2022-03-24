@@ -38,7 +38,6 @@ import (
 	"github.com/minio/minio/cmd/crypto"
 	xhttp "github.com/minio/minio/cmd/http"
 	"github.com/minio/minio/pkg/auth"
-	etcd "go.etcd.io/etcd/client/v3"
 
 	"github.com/minio/minio/pkg/certs"
 	"github.com/minio/minio/pkg/event"
@@ -231,7 +230,7 @@ var (
 	globalCacheKMS crypto.KMS
 
 	// Allocated etcd endpoint for config and bucket DNS.
-	globalEtcdClient *etcd.Client
+	globalEtcdClient interface{}
 
 	// Is set to true when Bucket federation is requested
 	// and is 'true' when etcdConfig.PathPrefix is empty
