@@ -26,7 +26,7 @@ require (
 	github.com/fatih/structs v1.1.0
 	github.com/frankban/quicktest v1.10.2 // indirect
 	github.com/go-ldap/ldap/v3 v3.2.4
-	github.com/go-sql-driver/mysql v1.5.0
+	github.com/go-sql-driver/mysql v1.6.0
 	github.com/gomodule/redigo v1.8.3
 	github.com/google/uuid v1.1.2
 	github.com/gorilla/handlers v1.5.1
@@ -82,13 +82,10 @@ require (
 	github.com/willf/bloom v2.0.3+incompatible
 	github.com/xdg/scram v0.0.0-20180814205039-7eeb5667e42c
 	github.com/xdg/stringprep v1.0.0 // indirect
-	go.etcd.io/etcd v0.0.0-20201125193152-8a03d2e9614b
 	go.opencensus.io v0.22.5 // indirect
-	go.uber.org/zap v1.13.0
 	golang.org/x/crypto v0.0.0-20210415154028-4f45737414dc
 	golang.org/x/net v0.0.0-20210226172049-e18ecbb05110
 	golang.org/x/sys v0.0.0-20210225134936-a50acf3fe073
-	golang.org/x/tools v0.1.0 // indirect
 	google.golang.org/api v0.5.0
 	gopkg.in/check.v1 v1.0.0-20200902074654-038fdea0a05b // indirect
 	gopkg.in/yaml.v2 v2.3.0

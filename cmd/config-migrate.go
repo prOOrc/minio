@@ -2429,7 +2429,6 @@ func migrateConfigToMinioSys(objAPI ObjectLayer) (err error) {
 	defer func() {
 		if err == nil {
 			if globalEtcdClient != nil {
-				deleteKeyEtcd(GlobalContext, globalEtcdClient, configFile)
 			} else {
 				// Rename config.json to config.json.deprecated only upon
 				// success of this function.
