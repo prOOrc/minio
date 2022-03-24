@@ -137,11 +137,6 @@ func FetchRegisteredTargets(ctx context.Context, cfg config.Config, transport *h
 		return nil, err
 	}
 
-	natsTargets, err := GetNotifyNATS(cfg[config.NotifyNATSSubSys], transport.TLSClientConfig.RootCAs)
-	if err != nil {
-		return nil, err
-	}
-
 	nsqTargets, err := GetNotifyNSQ(cfg[config.NotifyNSQSubSys])
 	if err != nil {
 		return nil, err
@@ -250,26 +245,6 @@ func FetchRegisteredTargets(ctx context.Context, cfg config.Config, transport *h
 			continue
 		}
 		newTarget, err := target.NewMySQLTarget(id, args, ctx.Done(), logger.LogOnceIf, test)
-		if err != nil {
-			targetsOffline = true
-			if returnOnTargetError {
-				return nil, err
-			}
-			_ = newTarget.Close()
-		}
-		if err = targetList.Add(newTarget); err != nil {
-			logger.LogIf(context.Background(), err)
-			if returnOnTargetError {
-				return nil, err
-			}
-		}
-	}
-
-	for id, args := range natsTargets {
-		if !args.Enable {
-			continue
-		}
-		newTarget, err := target.NewNATSTarget(id, args, ctx.Done(), logger.LogOnceIf, test)
 		if err != nil {
 			targetsOffline = true
 			if returnOnTargetError {
