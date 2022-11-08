@@ -193,69 +193,74 @@ func doTreeWalk(ctx context.Context, bucket, prefixDir, entryPrefixMatch, marker
 
 	for i, entry := range entries {
 		var leaf, leafDir bool
-
-		// Decision to do isLeaf check was pushed from listDir() to here.
-		if delayIsLeaf {
-			leaf = isLeaf(bucket, pathJoin(prefixDir, entry))
-			if leaf {
-				entry = strings.TrimSuffix(entry, slashSeparator)
+		var path string
+		if i != 0 || entry != "" {
+			// Decision to do isLeaf check was pushed from listDir() to here.
+			if delayIsLeaf {
+				leaf = isLeaf(bucket, pathJoin(prefixDir, entry))
+				if leaf {
+					entry = strings.TrimSuffix(entry, slashSeparator)
+				}
+			} else {
+				leaf = !HasSuffix(entry, slashSeparator)
 			}
+
+			if HasSuffix(entry, slashSeparator) {
+				leafDir = isLeafDir(bucket, pathJoin(prefixDir, entry))
+			}
+
+			isDir := !leafDir && !leaf
+
+			if i == 0 && markerDir == entry {
+				if !recursive {
+					// Skip as the marker would already be listed in the previous listing.
+					continue
+				}
+				if recursive && !isDir {
+					// We should not skip for recursive listing and if markerDir is a directory
+					// for ex. if marker is "four/five.txt" markerDir will be "four/" which
+					// should not be skipped, instead it will need to be treeWalk()'ed into.
+
+					// Skip if it is a file though as it would be listed in previous listing.
+					continue
+				}
+			}
+			if recursive && isDir {
+				// If the entry is a directory, we will need recurse into it.
+				markerArg := ""
+				if entry == markerDir {
+					// We need to pass "five.txt" as marker only if we are
+					// recursing into "four/"
+					markerArg = markerBase
+				}
+				prefixMatch := "" // Valid only for first level treeWalk and empty for subdirectories.
+				// markIsEnd is passed to this entry's treeWalk() so that treeWalker.end can be marked
+				// true at the end of the treeWalk stream.
+				markIsEnd := i == len(entries)-1 && isEnd
+				emptyDir, err := doTreeWalk(ctx, bucket, pathJoin(prefixDir, entry), prefixMatch, markerArg, recursive,
+					listDir, isLeaf, isLeafDir, resultCh, endWalkCh, markIsEnd)
+				if err != nil {
+					return false, err
+				}
+
+				// A nil totalFound means this is an empty directory that
+				// needs to be sent to the result channel, otherwise continue
+				// to the next entry.
+				if !emptyDir {
+					continue
+				}
+			}
+			path = pathJoin(prefixDir, entry)
 		} else {
-			leaf = !HasSuffix(entry, slashSeparator)
-		}
-
-		if HasSuffix(entry, slashSeparator) {
-			leafDir = isLeafDir(bucket, pathJoin(prefixDir, entry))
-		}
-
-		isDir := !leafDir && !leaf
-
-		if i == 0 && markerDir == entry {
-			if !recursive {
-				// Skip as the marker would already be listed in the previous listing.
-				continue
-			}
-			if recursive && !isDir {
-				// We should not skip for recursive listing and if markerDir is a directory
-				// for ex. if marker is "four/five.txt" markerDir will be "four/" which
-				// should not be skipped, instead it will need to be treeWalk()'ed into.
-
-				// Skip if it is a file though as it would be listed in previous listing.
-				continue
-			}
-		}
-		if recursive && isDir {
-			// If the entry is a directory, we will need recurse into it.
-			markerArg := ""
-			if entry == markerDir {
-				// We need to pass "five.txt" as marker only if we are
-				// recursing into "four/"
-				markerArg = markerBase
-			}
-			prefixMatch := "" // Valid only for first level treeWalk and empty for subdirectories.
-			// markIsEnd is passed to this entry's treeWalk() so that treeWalker.end can be marked
-			// true at the end of the treeWalk stream.
-			markIsEnd := i == len(entries)-1 && isEnd
-			emptyDir, err := doTreeWalk(ctx, bucket, pathJoin(prefixDir, entry), prefixMatch, markerArg, recursive,
-				listDir, isLeaf, isLeafDir, resultCh, endWalkCh, markIsEnd)
-			if err != nil {
-				return false, err
-			}
-
-			// A nil totalFound means this is an empty directory that
-			// needs to be sent to the result channel, otherwise continue
-			// to the next entry.
-			if !emptyDir {
-				continue
-			}
+			path = prefixDir
 		}
 
 		// EOF is set if we are at last entry and the caller indicated we at the end.
-		isEOF := ((i == len(entries)-1) && isEnd)
+		isEOF := (i == len(entries)-1) && isEnd
 		select {
 		case <-endWalkCh:
 			return false, errWalkAbort
-		case resultCh <- TreeWalkResult{entry: pathJoin(prefixDir, entry), isEmptyDir: leafDir, end: isEOF}:
+		case resultCh <- TreeWalkResult{entry: path, isEmptyDir: leafDir, end: isEOF}:
 		}
 	}
 
