@@ -193,7 +193,7 @@ func doTreeWalk(ctx context.Context, bucket, prefixDir, entryPrefixMatch, marker
 
 	for i, entry := range entries {
 		var leaf, leafDir bool
-		if recursive && i == 0 && entry == "" {
+		if i == 0 && entry == "" {
 			select {
 			case <-endWalkCh:
 				return false, errWalkAbort
