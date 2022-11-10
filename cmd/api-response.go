@@ -491,7 +491,7 @@ func generateListObjectsV1Response(bucket, prefix, marker, delimiter, encodingTy
 	owner.ID = globalMinioDefaultOwnerID
 	for _, object := range resp.Objects {
 		var content = Object{}
-		if object.Name == "" {
+		if object.Name == "" || strings.HasSuffix(object.Name, SlashSeparator) && !object.AccTime.IsZero() {
 			continue
 		}
 		content.Key = s3EncodeName(object.Name, encodingType)
@@ -541,7 +541,7 @@ func generateListObjectsV2Response(bucket, prefix, token, nextToken, startAfter,
 
 	for _, object := range objects {
 		var content = Object{}
-		if object.Name == "" {
+		if object.Name == "" || strings.HasSuffix(object.Name, SlashSeparator) && !object.AccTime.IsZero() {
 			continue
 		}
 		content.Key = s3EncodeName(object.Name, encodingType)
