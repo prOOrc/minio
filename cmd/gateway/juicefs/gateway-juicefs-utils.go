@@ -17,7 +17,6 @@
 package juicefs
 
 import (
-	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
@@ -30,10 +29,10 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/erikdubbelboer/gspt"
-	"github.com/google/gops/agent"
 	"github.com/juicedata/juicefs/pkg/chunk"
 	"github.com/juicedata/juicefs/pkg/meta"
 	"github.com/juicedata/juicefs/pkg/metric"
@@ -49,6 +48,9 @@ import (
 	"github.com/pyroscope-io/client/pyroscope"
 	"github.com/sirupsen/logrus"
 )
+
+var debugAgent string
+var debugAgentOnce sync.Once
 
 func getMetaConf(c *cli.Context, mp string, readOnly bool) *meta.Config {
 	cfg := &meta.Config{
@@ -224,23 +226,20 @@ func createStorage(format meta.Format) (object.ObjectStorage, error) {
 	object.UserAgent = "JuiceFS-" + version.Version()
 	var blob object.ObjectStorage
 	var err error
-	var query string
-	if p := strings.Index(format.Bucket, "?"); p > 0 && p+1 < len(format.Bucket) {
-		query = format.Bucket[p+1:]
-		format.Bucket = format.Bucket[:p]
-		logger.Debugf("query string: %s", query)
-	}
-	if query != "" {
-		values, err := url.ParseQuery(query)
-		if err != nil {
-			return nil, err
+	if u, err := url.Parse(format.Bucket); err == nil {
+		values := u.Query()
+		if values.Get("tls-insecure-skip-verify") != "" {
+			var tlsSkipVerify bool
+			if tlsSkipVerify, err = strconv.ParseBool(values.Get("tls-insecure-skip-verify")); err != nil {
+				return nil, err
+			}
+			object.GetHttpClient().Transport.(*http.Transport).TLSClientConfig.InsecureSkipVerify = tlsSkipVerify
+			values.Del("tls-insecure-skip-verify")
+			u.RawQuery = values.Encode()
+			format.Bucket = u.String()
 		}
-		var tlsSkipVerify bool
-		if tlsSkipVerify, err = strconv.ParseBool(values.Get("tls-insecure-skip-verify")); err != nil {
-			return nil, err
-		}
-		object.GetHttpClient().Transport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: tlsSkipVerify}
 	}
+
 	if format.Shards > 1 {
 		blob, err = object.NewSharded(strings.ToLower(format.Storage), format.Bucket, format.AccessKey, format.SecretKey, format.SessionToken, format.Shards)
 	} else {
@@ -250,7 +249,11 @@ func createStorage(format meta.Format) (object.ObjectStorage, error) {
 		return nil, err
 	}
 	blob = object.WithPrefix(blob, format.Name+"/")
-
+	if format.StorageClass != "" {
+		if os, ok := blob.(object.SupportStorageClass); ok {
+			os.SetStorageClass(format.StorageClass)
+		}
+	}
 	if format.EncryptKey != "" {
 		passphrase := os.Getenv("JFS_RSA_PASSPHRASE")
 		if passphrase == "" {
@@ -265,7 +268,10 @@ func createStorage(format meta.Format) (object.ObjectStorage, error) {
 		if err != nil {
 			return nil, fmt.Errorf("parse rsa: %s", err)
 		}
-		encryptor := object.NewAESEncryptor(object.NewRSAEncryptor(privKey))
+		encryptor, err := object.NewDataEncryptor(object.NewRSAEncryptor(privKey), format.EncryptAlgo)
+		if err != nil {
+			return nil, err
+		}
 		blob = object.NewEncrypted(blob, encryptor)
 	}
 	return blob, nil
@@ -340,7 +346,7 @@ func initForSvc(c *cli.Context, mp string, metaUrl string) (meta.Meta, chunk.Chu
 	store := chunk.NewCachedStore(blob, *chunkConf, registerer)
 	registerMetaMsg(metaCli, store, chunkConf)
 
-	err = metaCli.NewSession()
+	err = metaCli.NewSession(true)
 	if err != nil {
 		logger.Fatalf("new session: %s", err)
 	}
@@ -358,13 +364,16 @@ func initForSvc(c *cli.Context, mp string, metaUrl string) (meta.Meta, chunk.Chu
 
 func getVfsConf(c *cli.Context, metaConf *meta.Config, format *meta.Format, chunkConf *chunk.Config) *vfs.Config {
 	cfg := &vfs.Config{
-		Meta:       metaConf,
-		Format:     format,
-		Version:    version.Version(),
-		Chunk:      chunkConf,
-		BackupMeta: duration(c.String("backup-meta")),
+		Meta:           metaConf,
+		Format:         *format,
+		Version:        version.Version(),
+		Chunk:          chunkConf,
+		BackupMeta:     duration(c.String("backup-meta")),
+		Port:           &vfs.Port{DebugAgent: debugAgent, PyroscopeAddr: c.String("pyroscope")},
+		PrefixInternal: c.Bool("prefix-internal"),
 	}
-	if cfg.BackupMeta > 0 && cfg.BackupMeta < time.Minute*5 {
+	skip_check := os.Getenv("SKIP_BACKUP_META_CHECK") == "true"
+	if !skip_check && cfg.BackupMeta > 0 && cfg.BackupMeta < time.Minute*5 {
 		logger.Fatalf("backup-meta should not be less than 5 minutes: %s", cfg.BackupMeta)
 	}
 	return cfg
@@ -412,16 +421,12 @@ func setup(c *cli.Context, n int) {
 	}
 
 	if !c.Bool("no-agent") {
-		go func() {
+		go debugAgentOnce.Do(func() {
 			for port := 6060; port < 6100; port++ {
-				_ = http.ListenAndServe(fmt.Sprintf("127.0.0.1:%d", port), nil)
+				debugAgent = fmt.Sprintf("127.0.0.1:%d", port)
+				_ = http.ListenAndServe(debugAgent, nil)
 			}
-		}()
-		go func() {
-			for port := 6070; port < 6100; port++ {
-				_ = agent.Listen(agent.Options{Addr: fmt.Sprintf("127.0.0.1:%d", port)})
-			}
-		}()
+		})
 	}
 
 	if c.IsSet("pyroscope") {
