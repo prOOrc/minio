@@ -14,19 +14,21 @@
  * limitations under the License.
  */
 
-package juicefs
+package cmd
 
 import (
+	"bytes"
 	"context"
 	"fmt"
-	"github.com/google/uuid"              //nolint:gofumpt
+	"github.com/google/uuid" //nolint:gofumpt
+	jsoniter "github.com/json-iterator/go"
 	"github.com/juicedata/juicefs/pkg/fs" //nolint:gofumpt
 	"github.com/juicedata/juicefs/pkg/meta"
 	"github.com/juicedata/juicefs/pkg/utils"
-	"github.com/juicedata/juicefs/pkg/version"
 	"github.com/minio/cli"
 	"github.com/minio/madmin-go"
-	minio "github.com/minio/minio/cmd"
+	"github.com/minio/minio-go/v7/pkg/tags"
+	"github.com/minio/pkg/bucket/policy"
 	"io"
 	"net/http"
 	"os"
@@ -48,108 +50,33 @@ const (
 )
 
 var mctx meta.Context
-var logger = utils.GetLogger("juicefs")
-
-func init() {
-	const juicefsGatewayTemplate = `NAME:
-  {{.HelpName}} - {{.Usage}}
-
-USAGE:
-  {{.HelpName}} {{if .VisibleFlags}}[FLAGS]{{end}} META-URL
-{{if .VisibleFlags}}
-FLAGS:
-  {{range .VisibleFlags}}{{.}}
-  {{end}}{{end}}
-META-URL:
-  The address of JuiceFS metadata engine, please refer to https://juicefs.com/docs/community/databases_for_metadata for more information.
-
-EXAMPLES:
-  1. Start MinIO gateway server for JuiceFS backend
-     {{.Prompt}} {{.EnvVarSetCommand}} MINIO_ROOT_USER{{.AssignmentOperator}}accesskey
-     {{.Prompt}} {{.EnvVarSetCommand}} MINIO_ROOT_PASSWORD{{.AssignmentOperator}}secretkey
-     {{.Prompt}} {{.HelpName}} redis://localhost:6379/1
-
-
-For more information, please visit: https://juicefs.com/docs/community/s3_gateway
-`
-
-	selfFlags := []cli.Flag{
-		&cli.StringFlag{
-			Name:  "access-log",
-			Usage: "path for JuiceFS access log",
-		},
-		&cli.BoolFlag{
-			Name:  "no-banner",
-			Usage: "disable MinIO startup information",
-		},
-		&cli.BoolFlag{
-			Name:  "multi-buckets",
-			Usage: "use top level of directories as buckets",
-		},
-		&cli.BoolFlag{
-			Name:  "keep-etag",
-			Usage: "keep the ETag for uploaded objects",
-		},
-		&cli.StringFlag{
-			Name:  "umask",
-			Value: "022",
-			Usage: "umask for new files and directories in octal",
-		},
-	}
-
-	compoundFlags := [][]cli.Flag{
-		globalFlags(),
-		selfFlags,
-		clientFlags(0),
-		shareInfoFlags(),
-	}
-
-	minio.RegisterGatewayCommand(cli.Command{
-		Name:               minio.JuiceFSGateway,
-		Usage:              fmt.Sprintf("JuiceFS Distributed File System (JuiceFS %s)", strings.TrimSuffix(version.Version(), "+unknown")),
-		Action:             juicefsGatewayMain,
-		CustomHelpTemplate: juicefsGatewayTemplate,
-		HideHelpCommand:    true,
-		Flags:              expandFlags(compoundFlags...),
-	})
-}
-
-func juicefsGatewayMain(ctx *cli.Context) {
-	if ctx.Args().First() == "help" {
-		cli.ShowCommandHelpAndExit(ctx, minio.JuiceFSGateway, 1)
-	}
-	minio.StartGateway(ctx, &JfsObjects{ctx: ctx})
-}
+var jlogger = utils.GetLogger("juicefs")
 
 type Config struct {
 	MultiBucket bool
 	KeepEtag    bool
 	Umask       uint16
+	ObjTag      bool
 }
 
 type JfsObjects struct {
-	ctx *cli.Context
-	minio.GatewayUnsupported
+	ctx      *cli.Context
 	conf     *vfs.Config
 	fs       *fs.FileSystem
-	listPool *minio.TreeWalkPool
+	listPool *TreeWalkPool
 	gConf    *Config
 }
 
-func (n *JfsObjects) Name() string {
-	return minio.JuiceFSGateway
-}
-
-func (n *JfsObjects) NewGatewayLayer(creds madmin.Credentials) (minio.ObjectLayer, error) {
-	setup(n.ctx, 1)
-	addr := n.ctx.Args().Get(0)
-	conf, jfs := initForSvc(n.ctx, "s3gateway", addr)
-	umask, err := strconv.ParseUint(n.ctx.String("umask"), 8, 16)
+func NewJFSGatewayLayer(ctx *cli.Context) (ObjectLayer, error) {
+	setup(ctx, 1)
+	addr := ctx.Args().Get(0)
+	conf, jfs := initForSvc(ctx, "s3gateway", addr)
+	umask, err := strconv.ParseUint(ctx.String("umask"), 8, 16)
 	if err != nil {
-		logger.Fatalf("invalid umask %s: %s", n.ctx.String("umask"), err)
+		jlogger.Fatalf("invalid umask %s: %s", ctx.String("umask"), err)
 	}
 	mctx = meta.NewContext(uint32(os.Getpid()), uint32(os.Getuid()), []uint32{uint32(os.Getgid())})
-	jfsObj := &JfsObjects{fs: jfs, conf: conf, listPool: minio.NewTreeWalkPool(time.Minute * 30), gConf: &Config{MultiBucket: n.ctx.Bool("multi-buckets"), KeepEtag: n.ctx.Bool("keep-etag"), Umask: uint16(umask)}}
+	jfsObj := &JfsObjects{fs: jfs, conf: conf, listPool: NewTreeWalkPool(time.Minute * 30), gConf: &Config{MultiBucket: ctx.Bool("multi-buckets"), KeepEtag: ctx.Bool("keep-etag"), Umask: uint16(umask), ObjTag: ctx.Bool("object-tag")}}
 	go jfsObj.cleanup()
 	return jfsObj, nil
 }
@@ -171,8 +98,8 @@ func (n *JfsObjects) Shutdown(ctx context.Context) error {
 	return n.fs.Close()
 }
 
-func (n *JfsObjects) StorageInfo(ctx context.Context) (info minio.StorageInfo, errors []error) {
-	sinfo := minio.StorageInfo{}
+func (n *JfsObjects) StorageInfo(ctx context.Context) (info StorageInfo, errors []error) {
+	sinfo := StorageInfo{}
 	sinfo.Backend.Type = madmin.Gateway
 	sinfo.Backend.GatewayOnline = true
 	return sinfo, nil
@@ -197,7 +124,7 @@ func jfsToObjectErr(ctx context.Context, err error, params ...string) error {
 	}
 
 	if eno, ok := err.(syscall.Errno); !ok {
-		logger.Errorf("error: %s bucket: %s, object: %s, uploadID: %s", err, bucket, object, uploadID)
+		jlogger.Errorf("error: %s bucket: %s, object: %s, uploadID: %s", err, bucket, object, uploadID)
 		return err
 	} else if eno == 0 {
 		return nil
@@ -206,37 +133,40 @@ func jfsToObjectErr(ctx context.Context, err error, params ...string) error {
 	switch {
 	case fs.IsNotExist(err):
 		if uploadID != "" {
-			return minio.InvalidUploadID{
+			return InvalidUploadID{
 				UploadID: uploadID,
 			}
 		}
 		if object != "" {
-			return minio.ObjectNotFound{Bucket: bucket, Object: object}
+			return ObjectNotFound{Bucket: bucket, Object: object}
 		}
-		return minio.BucketNotFound{Bucket: bucket}
+		return BucketNotFound{Bucket: bucket}
 	case fs.IsExist(err):
 		if object != "" {
-			return minio.PrefixAccessDenied{Bucket: bucket, Object: object}
+			return PrefixAccessDenied{Bucket: bucket, Object: object}
 		}
-		return minio.BucketAlreadyOwnedByYou{Bucket: bucket}
+		return BucketAlreadyOwnedByYou{Bucket: bucket}
 	case fs.IsNotEmpty(err):
 		if object != "" {
-			return minio.PrefixAccessDenied{Bucket: bucket, Object: object}
+			return PrefixAccessDenied{Bucket: bucket, Object: object}
 		}
-		return minio.BucketNotEmpty{Bucket: bucket}
+		return BucketNotEmpty{Bucket: bucket}
 	default:
-		logger.Errorf("other error: %s bucket: %s, object: %s, uploadID: %s", err, bucket, object, uploadID)
+		jlogger.Errorf("other error: %s bucket: %s, object: %s, uploadID: %s", err, bucket, object, uploadID)
 		return err
 	}
 }
 
 // isValidBucketName verifies whether a bucket name is valid.
 func (n *JfsObjects) isValidBucketName(bucket string) error {
+	if bucket == minioMetaBucket {
+		return nil
+	}
 	if s3utils.CheckValidBucketNameStrict(bucket) != nil {
-		return minio.BucketNameInvalid{Bucket: bucket}
+		return BucketNameInvalid{Bucket: bucket}
 	}
 	if !n.gConf.MultiBucket && bucket != n.conf.Format.Name {
-		return minio.BucketNotFound{Bucket: bucket}
+		return BucketNotFound{Bucket: bucket}
 	}
 	return nil
 }
@@ -245,7 +175,7 @@ func (n *JfsObjects) path(p ...string) string {
 	if len(p) > 0 && p[0] == n.conf.Format.Name {
 		p = p[1:]
 	}
-	return sep + minio.PathJoin(p...)
+	return sep + PathJoin(p...)
 }
 
 func (n *JfsObjects) tpath(p ...string) string {
@@ -260,18 +190,18 @@ func (n *JfsObjects) ppath(bucket, uploadID, part string) string {
 	return n.tpath(bucket, "uploads", uploadID, part)
 }
 
-func (n *JfsObjects) DeleteBucket(ctx context.Context, bucket string, opts minio.DeleteBucketOptions) error {
+func (n *JfsObjects) DeleteBucket(ctx context.Context, bucket string, opts DeleteBucketOptions) error {
 	if err := n.isValidBucketName(bucket); err != nil {
 		return err
 	}
 	if !n.gConf.MultiBucket {
-		return minio.BucketNotEmpty{Bucket: bucket}
+		return BucketNotEmpty{Bucket: bucket}
 	}
 	eno := n.fs.Delete(mctx, n.path(bucket))
 	return jfsToObjectErr(ctx, eno, bucket)
 }
 
-func (n *JfsObjects) MakeBucketWithLocation(ctx context.Context, bucket string, options minio.BucketOptions) error {
+func (n *JfsObjects) MakeBucketWithLocation(ctx context.Context, bucket string, options BucketOptions) error {
 	if err := n.isValidBucketName(bucket); err != nil {
 		return err
 	}
@@ -282,13 +212,13 @@ func (n *JfsObjects) MakeBucketWithLocation(ctx context.Context, bucket string, 
 	return jfsToObjectErr(ctx, eno, bucket)
 }
 
-func (n *JfsObjects) GetBucketInfo(ctx context.Context, bucket string) (bi minio.BucketInfo, err error) {
+func (n *JfsObjects) GetBucketInfo(ctx context.Context, bucket string) (bi BucketInfo, err error) {
 	if err := n.isValidBucketName(bucket); err != nil {
 		return bi, err
 	}
 	fi, eno := n.fs.Stat(mctx, n.path(bucket))
 	if eno == 0 {
-		bi = minio.BucketInfo{
+		bi = BucketInfo{
 			Name:    bucket,
 			Created: time.Unix(fi.Atime()/1000, 0),
 		}
@@ -297,20 +227,20 @@ func (n *JfsObjects) GetBucketInfo(ctx context.Context, bucket string) (bi minio
 }
 
 // Ignores all reserved bucket names or invalid bucket names.
-func isReservedOrInvalidBucket(bucketEntry string, strict bool) bool {
+func isReservedOrInvalidBucketForJFS(bucketEntry string, strict bool) bool {
 	if err := s3utils.CheckValidBucketName(bucketEntry); err != nil {
 		return true
 	}
 	return bucketEntry == metaBucket
 }
 
-func (n *JfsObjects) ListBuckets(ctx context.Context) (buckets []minio.BucketInfo, err error) {
+func (n *JfsObjects) ListBuckets(ctx context.Context) (buckets []BucketInfo, err error) {
 	if !n.gConf.MultiBucket {
 		fi, eno := n.fs.Stat(mctx, "/")
 		if eno != 0 {
 			return nil, jfsToObjectErr(ctx, eno)
 		}
-		buckets = []minio.BucketInfo{{
+		buckets = []BucketInfo{{
 			Name:    n.conf.Format.Name,
 			Created: time.Unix(fi.Atime()/1000, 0),
 		}}
@@ -328,11 +258,11 @@ func (n *JfsObjects) ListBuckets(ctx context.Context) (buckets []minio.BucketInf
 
 	for _, entry := range entries {
 		// Ignore all reserved bucket names and invalid bucket names.
-		if isReservedOrInvalidBucket(entry.Name(), false) || n.isValidBucketName(entry.Name()) != nil {
+		if isReservedOrInvalidBucketForJFS(entry.Name(), false) || n.isValidBucketName(entry.Name()) != nil {
 			continue
 		}
 		if entry.IsDir() {
-			buckets = append(buckets, minio.BucketInfo{
+			buckets = append(buckets, BucketInfo{
 				Name:    entry.Name(),
 				Created: time.Unix(entry.(*fs.FileStat).Atime()/1000, 0),
 			})
@@ -368,7 +298,7 @@ func (n *JfsObjects) isLeaf(bucket, leafPath string) bool {
 	return !strings.HasSuffix(leafPath, "/")
 }
 
-func (n *JfsObjects) listDirFactory() minio.ListDirFunc {
+func (n *JfsObjects) listDirFactory() ListDirFunc {
 	return func(bucket, prefixDir, prefixEntry string) (emptyDir bool, entries []string, delayIsLeaf bool) {
 		f, eno := n.fs.Open(mctx, n.path(bucket, prefixDir), 0)
 		if eno != 0 {
@@ -397,12 +327,15 @@ func (n *JfsObjects) listDirFactory() minio.ListDirFunc {
 		if len(entries) == 0 {
 			return true, nil, false
 		}
-		entries, delayIsLeaf = minio.FilterListEntries(bucket, prefixDir, entries, prefixEntry, n.isLeaf)
+		entries, delayIsLeaf = FilterListEntries(bucket, prefixDir, entries, prefixEntry, n.isLeaf)
 		return false, entries, delayIsLeaf
 	}
 }
 
 func (n *JfsObjects) checkBucket(ctx context.Context, bucket string) error {
+	if bucket == minioMetaBucket {
+		return nil
+	}
 	if err := n.isValidBucketName(bucket); err != nil {
 		return err
 	}
@@ -413,18 +346,18 @@ func (n *JfsObjects) checkBucket(ctx context.Context, bucket string) error {
 }
 
 // ListObjects lists all blobs in JFS bucket filtered by prefix.
-func (n *JfsObjects) ListObjects(ctx context.Context, bucket, prefix, marker, delimiter string, maxKeys int) (loi minio.ListObjectsInfo, err error) {
+func (n *JfsObjects) ListObjects(ctx context.Context, bucket, prefix, marker, delimiter string, maxKeys int) (loi ListObjectsInfo, err error) {
 	if err := n.checkBucket(ctx, bucket); err != nil {
 		return loi, err
 	}
-	getObjectInfo := func(ctx context.Context, bucket, object string) (obj minio.ObjectInfo, err error) {
+	getObjectInfo := func(ctx context.Context, bucket, object string) (obj ObjectInfo, err error) {
 		fi, eno := n.fs.Stat(mctx, n.path(bucket, object))
 		if eno == 0 {
 			size := fi.Size()
 			if fi.IsDir() {
 				size = 0
 			}
-			obj = minio.ObjectInfo{
+			obj = ObjectInfo{
 				Bucket:  bucket,
 				Name:    object,
 				ModTime: fi.ModTime(),
@@ -437,7 +370,7 @@ func (n *JfsObjects) ListObjects(ctx context.Context, bucket, prefix, marker, de
 		// replace links to external file systems with empty files
 		if eno == syscall.ENOTSUP {
 			now := time.Now()
-			obj = minio.ObjectInfo{
+			obj = ObjectInfo{
 				Bucket:  bucket,
 				Name:    object,
 				ModTime: now,
@@ -453,14 +386,14 @@ func (n *JfsObjects) ListObjects(ctx context.Context, bucket, prefix, marker, de
 	if maxKeys == 0 {
 		maxKeys = -1 // list as many objects as possible
 	}
-	return minio.ListObjects(ctx, n, bucket, prefix, marker, delimiter, maxKeys, n.listPool, n.listDirFactory(), n.isLeaf, n.isLeafDir, getObjectInfo, getObjectInfo)
+	return ListObjects(ctx, n, bucket, prefix, marker, delimiter, maxKeys, n.listPool, n.listDirFactory(), n.isLeaf, n.isLeafDir, getObjectInfo, getObjectInfo)
 }
 
 // ListObjectsV2 lists all blobs in JFS bucket filtered by prefix
 func (n *JfsObjects) ListObjectsV2(ctx context.Context, bucket, prefix, continuationToken, delimiter string, maxKeys int,
-	fetchOwner bool, startAfter string) (loi minio.ListObjectsV2Info, err error) {
+	fetchOwner bool, startAfter string) (loi ListObjectsV2Info, err error) {
 	if err := n.isValidBucketName(bucket); err != nil {
-		return minio.ListObjectsV2Info{}, err
+		return ListObjectsV2Info{}, err
 	}
 	// fetchOwner is not supported and unused.
 	marker := continuationToken
@@ -469,7 +402,7 @@ func (n *JfsObjects) ListObjectsV2(ctx context.Context, bucket, prefix, continua
 	}
 	resultV1, err := n.ListObjects(ctx, bucket, prefix, marker, delimiter, maxKeys)
 	if err == nil {
-		loi = minio.ListObjectsV2Info{
+		loi = ListObjectsV2Info{
 			Objects:               resultV1.Objects,
 			Prefixes:              resultV1.Prefixes,
 			ContinuationToken:     continuationToken,
@@ -484,14 +417,14 @@ func (n *JfsObjects) setFileAtime(p string, atime int64) {
 	if f, eno := n.fs.Open(mctx, p, 0); eno == 0 {
 		defer f.Close(mctx)
 		if eno := f.Utime(mctx, atime, -1); eno != 0 {
-			logger.Warnf("set atime of %s: %s", p, eno)
+			jlogger.Warnf("set atime of %s: %s", p, eno)
 		}
 	} else if eno != syscall.ENOENT {
-		logger.Warnf("open %s: %s", p, eno)
+		jlogger.Warnf("open %s: %s", p, eno)
 	}
 }
 
-func (n *JfsObjects) DeleteObject(ctx context.Context, bucket, object string, options minio.ObjectOptions) (info minio.ObjectInfo, err error) {
+func (n *JfsObjects) DeleteObject(ctx context.Context, bucket, object string, options ObjectOptions) (info ObjectInfo, err error) {
 	if err = n.checkBucket(ctx, bucket); err != nil {
 		return
 	}
@@ -520,13 +453,13 @@ func (n *JfsObjects) DeleteObject(ctx context.Context, bucket, object string, op
 	return info, jfsToObjectErr(ctx, err, bucket, object)
 }
 
-func (n *JfsObjects) DeleteObjects(ctx context.Context, bucket string, objects []minio.ObjectToDelete, options minio.ObjectOptions) (objs []minio.DeletedObject, errs []error) {
-	objs = make([]minio.DeletedObject, len(objects))
+func (n *JfsObjects) DeleteObjects(ctx context.Context, bucket string, objects []ObjectToDelete, options ObjectOptions) (objs []DeletedObject, errs []error) {
+	objs = make([]DeletedObject, len(objects))
 	errs = make([]error, len(objects))
 	for idx, object := range objects {
 		_, errs[idx] = n.DeleteObject(ctx, bucket, object.ObjectName, options)
 		if errs[idx] == nil {
-			objs[idx] = minio.DeletedObject{
+			objs[idx] = DeletedObject{
 				ObjectName: object.ObjectName,
 			}
 		}
@@ -542,7 +475,7 @@ func (f *fReader) Read(b []byte) (int, error) {
 	return f.File.Read(mctx, b)
 }
 
-func (n *JfsObjects) GetObjectNInfo(ctx context.Context, bucket, object string, rs *minio.HTTPRangeSpec, h http.Header, lockType minio.LockType, opts minio.ObjectOptions) (gr *minio.GetObjectReader, err error) {
+func (n *JfsObjects) GetObjectNInfo(ctx context.Context, bucket, object string, rs *HTTPRangeSpec, h http.Header, lockType LockType, opts ObjectOptions) (gr *GetObjectReader, err error) {
 	objInfo, err := n.GetObjectInfo(ctx, bucket, object, opts)
 	if err != nil {
 		return nil, err
@@ -560,10 +493,10 @@ func (n *JfsObjects) GetObjectNInfo(ctx context.Context, bucket, object string, 
 	_, _ = f.Seek(mctx, startOffset, 0)
 	r := &io.LimitedReader{R: &fReader{f}, N: length}
 	closer := func() { _ = f.Close(mctx) }
-	return minio.NewGetObjectReaderFromReader(r, objInfo, opts, closer)
+	return NewGetObjectReaderFromReader(r, objInfo, opts, closer)
 }
 
-func (n *JfsObjects) CopyObject(ctx context.Context, srcBucket, srcObject, dstBucket, dstObject string, srcInfo minio.ObjectInfo, srcOpts, dstOpts minio.ObjectOptions) (info minio.ObjectInfo, err error) {
+func (n *JfsObjects) CopyObject(ctx context.Context, srcBucket, srcObject, dstBucket, dstObject string, srcInfo ObjectInfo, srcOpts, dstOpts ObjectOptions) (info ObjectInfo, err error) {
 	if err = n.checkBucket(ctx, srcBucket); err != nil {
 		return
 	}
@@ -572,14 +505,14 @@ func (n *JfsObjects) CopyObject(ctx context.Context, srcBucket, srcObject, dstBu
 	}
 	dst := n.path(dstBucket, dstObject)
 	src := n.path(srcBucket, srcObject)
-	if minio.IsStringEqual(src, dst) {
-		return n.GetObjectInfo(ctx, srcBucket, srcObject, minio.ObjectOptions{})
+	if IsStringEqual(src, dst) {
+		return n.GetObjectInfo(ctx, srcBucket, srcObject, ObjectOptions{})
 	}
-	tmp := n.tpath(dstBucket, "tmp", minio.MustGetUUID())
+	tmp := n.tpath(dstBucket, "tmp", MustGetUUID())
 	_ = n.mkdirAll(ctx, path.Dir(tmp))
 	f, eno := n.fs.Create(mctx, tmp, 0666, n.gConf.Umask)
 	if eno != 0 {
-		logger.Errorf("create %s: %s", tmp, eno)
+		jlogger.Errorf("create %s: %s", tmp, eno)
 		return
 	}
 	defer func() {
@@ -590,13 +523,13 @@ func (n *JfsObjects) CopyObject(ctx context.Context, srcBucket, srcObject, dstBu
 	_, eno = n.fs.CopyFileRange(mctx, src, 0, tmp, 0, 1<<63)
 	if eno != 0 {
 		err = jfsToObjectErr(ctx, eno, srcBucket, srcObject)
-		logger.Errorf("copy %s to %s: %s", src, tmp, err)
+		jlogger.Errorf("copy %s to %s: %s", src, tmp, err)
 		return
 	}
 	eno = n.fs.Rename(mctx, tmp, dst, 0)
 	if eno != 0 {
 		err = jfsToObjectErr(ctx, eno, srcBucket, srcObject)
-		logger.Errorf("rename %s to %s: %s", tmp, dst, err)
+		jlogger.Errorf("rename %s to %s: %s", tmp, dst, err)
 		return
 	}
 	fi, eno := n.fs.Stat(mctx, dst)
@@ -611,12 +544,12 @@ func (n *JfsObjects) CopyObject(ctx context.Context, srcBucket, srcObject, dstBu
 		if len(etag) != 0 {
 			eno = n.fs.SetXattr(mctx, dst, s3Etag, etag, 0)
 			if eno != 0 {
-				logger.Warnf("set xattr error, path: %s,xattr: %s,value: %s,flags: %d", dst, s3Etag, etag, 0)
+				jlogger.Warnf("set xattr error, path: %s,xattr: %s,value: %s,flags: %d", dst, s3Etag, etag, 0)
 			}
 		}
 	}
 
-	return minio.ObjectInfo{
+	return ObjectInfo{
 		Bucket:  dstBucket,
 		Name:    dstObject,
 		ETag:    string(etag),
@@ -634,7 +567,7 @@ var buffPool = sync.Pool{
 	},
 }
 
-func (n *JfsObjects) GetObject(ctx context.Context, bucket, object string, startOffset, length int64, writer io.Writer, etag string, opts minio.ObjectOptions) (err error) {
+func (n *JfsObjects) GetObject(ctx context.Context, bucket, object string, startOffset, length int64, writer io.Writer, etag string, opts ObjectOptions) (err error) {
 	if err = n.checkBucket(ctx, bucket); err != nil {
 		return
 	}
@@ -666,7 +599,7 @@ func (n *JfsObjects) GetObject(ctx context.Context, bucket, object string, start
 	return jfsToObjectErr(ctx, err, bucket, object)
 }
 
-func (n *JfsObjects) GetObjectInfo(ctx context.Context, bucket, object string, opts minio.ObjectOptions) (objInfo minio.ObjectInfo, err error) {
+func (n *JfsObjects) GetObjectInfo(ctx context.Context, bucket, object string, opts ObjectOptions) (objInfo ObjectInfo, err error) {
 	if err = n.checkBucket(ctx, bucket); err != nil {
 		return
 	}
@@ -690,7 +623,32 @@ func (n *JfsObjects) GetObjectInfo(ctx context.Context, bucket, object string, o
 		size = 0
 		contentType = "application/octet-stream"
 	}
-	return minio.ObjectInfo{
+
+	// key1=value1&key2=value2
+	var tagString string
+	if n.gConf.ObjTag {
+		names, errno := n.fs.ListXattr(mctx, n.path(bucket, object))
+		if errno != 0 {
+			return ObjectInfo{}, errno
+		}
+		if names != nil {
+			split := bytes.Split(bytes.TrimSuffix(names, []byte{0}), []byte{0})
+			for idx, key := range split {
+				value, errno := n.fs.GetXattr(mctx, n.path(bucket, object), string(key))
+				if errno != 0 && errno != syscall.ENOATTR {
+					return ObjectInfo{}, errno
+				}
+				if errno == syscall.ENOATTR {
+					continue
+				}
+				tagString += fmt.Sprintf("%s=%s", key, value)
+				if idx != len(split)-1 {
+					tagString += "&"
+				}
+			}
+		}
+	}
+	return ObjectInfo{
 		Bucket:      bucket,
 		Name:        object,
 		ModTime:     fi.ModTime(),
@@ -699,6 +657,7 @@ func (n *JfsObjects) GetObjectInfo(ctx context.Context, bucket, object string, o
 		AccTime:     fi.ModTime(),
 		ETag:        string(etag),
 		ContentType: contentType,
+		UserTags:    tagString,
 	}, nil
 }
 
@@ -725,12 +684,12 @@ func (n *JfsObjects) mkdirAll(ctx context.Context, p string) error {
 	return eno
 }
 
-func (n *JfsObjects) putObject(ctx context.Context, bucket, object string, r *minio.PutObjReader, opts minio.ObjectOptions) (err error) {
-	tmpname := n.tpath(bucket, "tmp", minio.MustGetUUID())
+func (n *JfsObjects) putObject(ctx context.Context, bucket, object string, r *PutObjReader, opts ObjectOptions) (err error) {
+	tmpname := n.tpath(bucket, "tmp", MustGetUUID())
 	_ = n.mkdirAll(ctx, path.Dir(tmpname))
 	f, eno := n.fs.Create(mctx, tmpname, 0666, n.gConf.Umask)
 	if eno != 0 {
-		logger.Errorf("create %s: %s", tmpname, eno)
+		jlogger.Errorf("create %s: %s", tmpname, eno)
 		err = eno
 		return
 	}
@@ -774,7 +733,7 @@ func (n *JfsObjects) putObject(ctx context.Context, bucket, object string, r *mi
 	return
 }
 
-func (n *JfsObjects) PutObject(ctx context.Context, bucket string, object string, r *minio.PutObjReader, opts minio.ObjectOptions) (objInfo minio.ObjectInfo, err error) {
+func (n *JfsObjects) PutObject(ctx context.Context, bucket string, object string, r *PutObjReader, opts ObjectOptions) (objInfo ObjectInfo, err error) {
 	if err = n.checkBucket(ctx, bucket); err != nil {
 		return
 	}
@@ -786,7 +745,7 @@ func (n *JfsObjects) PutObject(ctx context.Context, bucket string, object string
 			return
 		}
 		if r.Size() > 0 {
-			err = minio.ObjectExistsAsDirectory{
+			err = ObjectExistsAsDirectory{
 				Bucket: bucket,
 				Object: object,
 				Err:    syscall.EEXIST,
@@ -806,10 +765,10 @@ func (n *JfsObjects) PutObject(ctx context.Context, bucket string, object string
 	if n.gConf.KeepEtag && !strings.HasSuffix(object, sep) {
 		eno = n.fs.SetXattr(mctx, p, s3Etag, []byte(etag), 0)
 		if eno != 0 {
-			logger.Errorf("set xattr error, path: %s,xattr: %s,value: %s,flags: %d", p, s3Etag, etag, 0)
+			jlogger.Errorf("set xattr error, path: %s,xattr: %s,value: %s,flags: %d", p, s3Etag, etag, 0)
 		}
 	}
-	return minio.ObjectInfo{
+	return ObjectInfo{
 		Bucket:  bucket,
 		Name:    object,
 		ETag:    etag,
@@ -820,17 +779,17 @@ func (n *JfsObjects) PutObject(ctx context.Context, bucket string, object string
 	}, nil
 }
 
-func (n *JfsObjects) NewMultipartUpload(ctx context.Context, bucket string, object string, opts minio.ObjectOptions) (uploadID string, err error) {
+func (n *JfsObjects) NewMultipartUpload(ctx context.Context, bucket string, object string, opts ObjectOptions) (uploadID string, err error) {
 	if err = n.checkBucket(ctx, bucket); err != nil {
 		return
 	}
-	uploadID = minio.MustGetUUID()
+	uploadID = MustGetUUID()
 	p := n.upath(bucket, uploadID)
 	err = n.mkdirAll(ctx, p)
 	if err == nil {
 		eno := n.fs.SetXattr(mctx, p, uploadKeyName, []byte(object), 0)
 		if eno != 0 {
-			logger.Warnf("set object %s on upload %s: %s", object, uploadID, eno)
+			jlogger.Warnf("set object %s on upload %s: %s", object, uploadID, eno)
 		}
 	}
 	return
@@ -839,7 +798,7 @@ func (n *JfsObjects) NewMultipartUpload(ctx context.Context, bucket string, obje
 const uploadKeyName = "s3-object"
 const s3Etag = "s3-etag"
 
-func (n *JfsObjects) ListMultipartUploads(ctx context.Context, bucket string, prefix string, keyMarker string, uploadIDMarker string, delimiter string, maxUploads int) (lmi minio.ListMultipartsInfo, err error) {
+func (n *JfsObjects) ListMultipartUploads(ctx context.Context, bucket string, prefix string, keyMarker string, uploadIDMarker string, delimiter string, maxUploads int) (lmi ListMultipartsInfo, err error) {
 	if err = n.checkBucket(ctx, bucket); err != nil {
 		return
 	}
@@ -863,7 +822,7 @@ func (n *JfsObjects) ListMultipartUploads(ctx context.Context, bucket string, pr
 			object_, _ := n.fs.GetXattr(mctx, n.upath(bucket, uploadID), uploadKeyName)
 			object := string(object_)
 			if strings.HasPrefix(object, prefix) && object > keyMarker {
-				lmi.Uploads = append(lmi.Uploads, minio.MultipartInfo{
+				lmi.Uploads = append(lmi.Uploads, MultipartInfo{
 					Object:    object,
 					UploadID:  uploadID,
 					Initiated: time.Unix(e.Attr.Atime, int64(e.Attr.Atimensec)),
@@ -888,7 +847,7 @@ func (n *JfsObjects) checkUploadIDExists(ctx context.Context, bucket, object, up
 	return jfsToObjectErr(ctx, eno, bucket, object, uploadID)
 }
 
-func (n *JfsObjects) ListObjectParts(ctx context.Context, bucket, object, uploadID string, partNumberMarker int, maxParts int, opts minio.ObjectOptions) (result minio.ListPartsInfo, err error) {
+func (n *JfsObjects) ListObjectParts(ctx context.Context, bucket, object, uploadID string, partNumberMarker int, maxParts int, opts ObjectOptions) (result ListPartsInfo, err error) {
 	if err = n.checkUploadIDExists(ctx, bucket, object, uploadID); err != nil {
 		return result, err
 	}
@@ -912,7 +871,7 @@ func (n *JfsObjects) ListObjectParts(ctx context.Context, bucket, object, upload
 		num, er := strconv.Atoi(string(entry.Name))
 		if er == nil && num > partNumberMarker {
 			etag, _ := n.fs.GetXattr(mctx, n.ppath(bucket, uploadID, string(entry.Name)), s3Etag)
-			result.Parts = append(result.Parts, minio.PartInfo{
+			result.Parts = append(result.Parts, PartInfo{
 				PartNumber:   num,
 				Size:         int64(entry.Attr.Length),
 				LastModified: time.Unix(entry.Attr.Mtime, 0),
@@ -932,7 +891,7 @@ func (n *JfsObjects) ListObjectParts(ctx context.Context, bucket, object, upload
 }
 
 func (n *JfsObjects) CopyObjectPart(ctx context.Context, srcBucket, srcObject, dstBucket, dstObject, uploadID string, partID int,
-	startOffset int64, length int64, srcInfo minio.ObjectInfo, srcOpts, dstOpts minio.ObjectOptions) (result minio.PartInfo, err error) {
+	startOffset int64, length int64, srcInfo ObjectInfo, srcOpts, dstOpts ObjectOptions) (result PartInfo, err error) {
 	if err = n.isValidBucketName(srcBucket); err != nil {
 		return
 	}
@@ -943,7 +902,7 @@ func (n *JfsObjects) CopyObjectPart(ctx context.Context, srcBucket, srcObject, d
 	return n.PutObjectPart(ctx, dstBucket, dstObject, uploadID, partID, srcInfo.PutObjReader, dstOpts)
 }
 
-func (n *JfsObjects) PutObjectPart(ctx context.Context, bucket, object, uploadID string, partID int, r *minio.PutObjReader, opts minio.ObjectOptions) (info minio.PartInfo, err error) {
+func (n *JfsObjects) PutObjectPart(ctx context.Context, bucket, object, uploadID string, partID int, r *PutObjReader, opts ObjectOptions) (info PartInfo, err error) {
 	if err = n.checkUploadIDExists(ctx, bucket, object, uploadID); err != nil {
 		return
 	}
@@ -954,16 +913,16 @@ func (n *JfsObjects) PutObjectPart(ctx context.Context, bucket, object, uploadID
 	}
 	etag := r.MD5CurrentHexString()
 	if n.fs.SetXattr(mctx, p, s3Etag, []byte(etag), 0) != 0 {
-		logger.Warnf("set xattr error, path: %s,xattr: %s,value: %s,flags: %d", p, s3Etag, etag, 0)
+		jlogger.Warnf("set xattr error, path: %s,xattr: %s,value: %s,flags: %d", p, s3Etag, etag, 0)
 	}
 	info.PartNumber = partID
 	info.ETag = etag
-	info.LastModified = minio.UTCNow()
+	info.LastModified = UTCNow()
 	info.Size = r.Reader.Size()
 	return
 }
 
-func (n *JfsObjects) GetMultipartInfo(ctx context.Context, bucket, object, uploadID string, opts minio.ObjectOptions) (result minio.MultipartInfo, err error) {
+func (n *JfsObjects) GetMultipartInfo(ctx context.Context, bucket, object, uploadID string, opts ObjectOptions) (result MultipartInfo, err error) {
 	if err = n.checkUploadIDExists(ctx, bucket, object, uploadID); err != nil {
 		return
 	}
@@ -973,7 +932,7 @@ func (n *JfsObjects) GetMultipartInfo(ctx context.Context, bucket, object, uploa
 	return
 }
 
-func (n *JfsObjects) CompleteMultipartUpload(ctx context.Context, bucket, object, uploadID string, parts []minio.CompletePart, opts minio.ObjectOptions) (objInfo minio.ObjectInfo, err error) {
+func (n *JfsObjects) CompleteMultipartUpload(ctx context.Context, bucket, object, uploadID string, parts []CompletePart, opts ObjectOptions) (objInfo ObjectInfo, err error) {
 	if err = n.checkUploadIDExists(ctx, bucket, object, uploadID); err != nil {
 		return
 	}
@@ -983,7 +942,7 @@ func (n *JfsObjects) CompleteMultipartUpload(ctx context.Context, bucket, object
 	f, eno := n.fs.Create(mctx, tmp, 0666, n.gConf.Umask)
 	if eno != 0 {
 		err = jfsToObjectErr(ctx, eno, bucket, object, uploadID)
-		logger.Errorf("create complete: %s", err)
+		jlogger.Errorf("create complete: %s", err)
 		return
 	}
 	defer func() {
@@ -995,7 +954,7 @@ func (n *JfsObjects) CompleteMultipartUpload(ctx context.Context, bucket, object
 		copied, eno := n.fs.CopyFileRange(mctx, p, 0, tmp, total, 1<<30)
 		if eno != 0 {
 			err = jfsToObjectErr(ctx, eno, bucket, object, uploadID)
-			logger.Errorf("merge parts: %s", err)
+			jlogger.Errorf("merge parts: %s", err)
 			return
 		}
 		total += copied
@@ -1015,7 +974,7 @@ func (n *JfsObjects) CompleteMultipartUpload(ctx context.Context, bucket, object
 	if eno != 0 {
 		_ = n.fs.Delete(mctx, tmp)
 		err = jfsToObjectErr(ctx, eno, bucket, object, uploadID)
-		logger.Errorf("Rename %s -> %s: %s", tmp, name, err)
+		jlogger.Errorf("Rename %s -> %s: %s", tmp, name, err)
 		return
 	}
 
@@ -1030,14 +989,14 @@ func (n *JfsObjects) CompleteMultipartUpload(ctx context.Context, bucket, object
 	_ = n.fs.Rmr(mctx, n.upath(bucket, uploadID))
 
 	// Calculate s3 compatible md5sum for complete multipart.
-	s3MD5 := minio.ComputeCompleteMultipartMD5(parts)
+	s3MD5 := ComputeCompleteMultipartMD5(parts)
 	if n.gConf.KeepEtag {
 		eno = n.fs.SetXattr(mctx, name, s3Etag, []byte(s3MD5), 0)
 		if eno != 0 {
-			logger.Warnf("set xattr error, path: %s,xattr: %s,value: %s,flags: %d", name, s3Etag, s3MD5, 0)
+			jlogger.Warnf("set xattr error, path: %s,xattr: %s,value: %s,flags: %d", name, s3Etag, s3MD5, 0)
 		}
 	}
-	return minio.ObjectInfo{
+	return ObjectInfo{
 		Bucket:  bucket,
 		Name:    object,
 		ETag:    s3MD5,
@@ -1048,7 +1007,7 @@ func (n *JfsObjects) CompleteMultipartUpload(ctx context.Context, bucket, object
 	}, nil
 }
 
-func (n *JfsObjects) AbortMultipartUpload(ctx context.Context, bucket, object, uploadID string, option minio.ObjectOptions) (err error) {
+func (n *JfsObjects) AbortMultipartUpload(ctx context.Context, bucket, object, uploadID string, option ObjectOptions) (err error) {
 	if err = n.checkUploadIDExists(ctx, bucket, object, uploadID); err != nil {
 		return
 	}
@@ -1063,7 +1022,7 @@ func (n *JfsObjects) cleanup() {
 		if n.gConf.MultiBucket {
 			buckets, err := n.ListBuckets(context.Background())
 			if err != nil {
-				logger.Errorf("list buckets error: %v", err)
+				jlogger.Errorf("list buckets error: %v", err)
 				continue
 			}
 			for _, bucket := range buckets {
@@ -1084,12 +1043,205 @@ func (n *JfsObjects) cleanup() {
 				if t.Sub(time.Unix(entry.Attr.Mtime, 0)) > 7*24*time.Hour {
 					p := n.path(dir, string(entry.Name))
 					if errno := n.fs.Rmr(mctx, p); errno != 0 {
-						logger.Errorf("failed to delete expired temporary files path: %s,", p)
+						jlogger.Errorf("failed to delete expired temporary files path: %s,", p)
 					} else {
-						logger.Infof("delete expired temporary files path: %s, mtime: %s", p, time.Unix(entry.Attr.Mtime, 0).Format(time.RFC3339))
+						jlogger.Infof("delete expired temporary files path: %s, mtime: %s", p, time.Unix(entry.Attr.Mtime, 0).Format(time.RFC3339))
 					}
 				}
 			}
 		}
 	}
+}
+
+func (n *JfsObjects) NewNSLock(bucket string, objects ...string) RWLocker {
+	return newNSLock(false).NewNSLock(nil, bucket, objects...)
+}
+
+func (n *JfsObjects) NSScanner(ctx context.Context, bf *bloomFilter, updates chan<- DataUsageInfo, wantCycle uint32) error {
+	return nil
+}
+
+func (n *JfsObjects) BackendInfo() madmin.BackendInfo {
+	return madmin.BackendInfo{Type: madmin.FS}
+}
+
+func (n *JfsObjects) LocalStorageInfo(ctx context.Context) (StorageInfo, []error) {
+	return n.StorageInfo(ctx)
+}
+
+func (n *JfsObjects) ListObjectVersions(ctx context.Context, bucket, prefix, marker, versionMarker, delimiter string, maxKeys int) (loi ListObjectVersionsInfo, err error) {
+	return loi, NotImplemented{}
+}
+
+func (n *JfsObjects) getObjectInfoNoFSLock(ctx context.Context, bucket, object string) (oi ObjectInfo, e error) {
+	return n.GetObjectInfo(ctx, bucket, object, ObjectOptions{})
+}
+
+func (n *JfsObjects) Walk(ctx context.Context, bucket, prefix string, results chan<- ObjectInfo, opts ObjectOptions) error {
+	return fsWalk(ctx, n, bucket, prefix, n.listDirFactory(), n.isLeaf, n.isLeafDir, results, n.getObjectInfoNoFSLock, n.getObjectInfoNoFSLock)
+}
+
+func (n *JfsObjects) TransitionObject(ctx context.Context, bucket, object string, opts ObjectOptions) error {
+	return NotImplemented{}
+}
+
+func (n *JfsObjects) RestoreTransitionedObject(ctx context.Context, bucket, object string, opts ObjectOptions) error {
+	return NotImplemented{}
+}
+
+func (n *JfsObjects) SetBucketPolicy(ctx context.Context, bucket string, policy *policy.Policy) error {
+	meta, err := loadBucketMetadata(ctx, n, bucket)
+	if err != nil {
+		return err
+	}
+
+	json := jsoniter.ConfigCompatibleWithStandardLibrary
+	configData, err := json.Marshal(policy)
+	if err != nil {
+		return err
+	}
+	meta.PolicyConfigJSON = configData
+
+	return meta.Save(ctx, n)
+}
+
+func (n *JfsObjects) GetBucketPolicy(ctx context.Context, bucket string) (*policy.Policy, error) {
+	meta, err := loadBucketMetadata(ctx, n, bucket)
+	if err != nil {
+		return nil, BucketPolicyNotFound{Bucket: bucket}
+	}
+	if meta.policyConfig == nil {
+		return nil, BucketPolicyNotFound{Bucket: bucket}
+	}
+	return meta.policyConfig, nil
+}
+
+func (n *JfsObjects) DeleteBucketPolicy(ctx context.Context, bucket string) error {
+	meta, err := loadBucketMetadata(ctx, n, bucket)
+	if err != nil {
+		return err
+	}
+	meta.PolicyConfigJSON = nil
+	return meta.Save(ctx, n)
+}
+
+func (n *JfsObjects) SetDriveCounts() []int {
+	return nil
+}
+
+func (n *JfsObjects) HealFormat(ctx context.Context, dryRun bool) (madmin.HealResultItem, error) {
+	return madmin.HealResultItem{}, NotImplemented{}
+}
+
+func (n *JfsObjects) HealBucket(ctx context.Context, bucket string, opts madmin.HealOpts) (madmin.HealResultItem, error) {
+	return madmin.HealResultItem{}, NotImplemented{}
+}
+
+func (n *JfsObjects) HealObject(ctx context.Context, bucket, object, versionID string, opts madmin.HealOpts) (res madmin.HealResultItem, err error) {
+	return res, NotImplemented{}
+}
+
+func (n *JfsObjects) HealObjects(ctx context.Context, bucket, prefix string, opts madmin.HealOpts, fn HealObjectFn) error {
+	return NotImplemented{}
+}
+
+func (n *JfsObjects) GetMetrics(ctx context.Context) (*BackendMetrics, error) {
+	return &BackendMetrics{}, NotImplemented{}
+}
+
+func (n *JfsObjects) Health(ctx context.Context, opts HealthOptions) HealthResult {
+	if _, errno := n.fs.Stat(mctx, minioMetaBucket); errno != 0 {
+		return HealthResult{}
+	}
+	return HealthResult{
+		Healthy: newObjectLayerFn() != nil,
+	}
+}
+
+func (n *JfsObjects) ReadHealth(ctx context.Context) bool {
+	_, errno := n.fs.Stat(mctx, minioMetaBucket)
+	return errno == 0
+}
+
+func (n *JfsObjects) PutObjectMetadata(ctx context.Context, s string, s2 string, objectOptions ObjectOptions) (ObjectInfo, error) {
+	return ObjectInfo{}, NotImplemented{}
+}
+
+func (n *JfsObjects) PutObjectTags(ctx context.Context, bucket, object string, tags string, opts ObjectOptions) (ObjectInfo, error) {
+	if !n.gConf.ObjTag {
+		return ObjectInfo{}, NotImplemented{}
+	}
+
+	if opts.VersionID != "" && opts.VersionID != nullVersionID {
+		return ObjectInfo{}, VersionNotFound{
+			Bucket:    bucket,
+			Object:    object,
+			VersionID: opts.VersionID,
+		}
+	}
+
+	if _, err := n.DeleteObjectTags(ctx, bucket, object, opts); err != nil {
+		return ObjectInfo{}, err
+	}
+	splits := strings.Split(tags, "=")
+	if eno := n.fs.SetXattr(mctx, n.path(bucket, object), splits[0], []byte(splits[1]), 0); eno != 0 {
+		return ObjectInfo{}, eno
+	}
+	return n.GetObjectInfo(ctx, bucket, object, opts)
+}
+
+func (n *JfsObjects) GetObjectTags(ctx context.Context, bucket, object string, opts ObjectOptions) (*tags.Tags, error) {
+	if !n.gConf.ObjTag {
+		return nil, NotImplemented{}
+	}
+	if opts.VersionID != "" && opts.VersionID != nullVersionID {
+		return nil, VersionNotFound{
+			Bucket:    bucket,
+			Object:    object,
+			VersionID: opts.VersionID,
+		}
+	}
+	oi, err := n.GetObjectInfo(ctx, bucket, object, ObjectOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	return tags.ParseObjectTags(oi.UserTags)
+}
+
+func (n *JfsObjects) DeleteObjectTags(ctx context.Context, bucket, object string, opts ObjectOptions) (ObjectInfo, error) {
+	if !n.gConf.ObjTag {
+		return ObjectInfo{}, NotImplemented{}
+	}
+	names, errno := n.fs.ListXattr(mctx, n.path(bucket, object))
+	if errno != 0 {
+		return ObjectInfo{}, errno
+	}
+	if names == nil {
+		return ObjectInfo{}, nil
+	}
+
+	split := bytes.Split(bytes.TrimSuffix(names, []byte{0}), []byte{0})
+	for _, key := range split {
+		if errno := n.fs.RemoveXattr(mctx, n.path(bucket, object), string(key)); errno != 0 {
+			if n.gConf.KeepEtag && string(key) == s3Etag && errno == syscall.ENOENT {
+				continue
+			}
+			return ObjectInfo{}, errno
+		}
+	}
+
+	return n.GetObjectInfo(ctx, bucket, object, opts)
+}
+
+func (n *JfsObjects) IsNotificationSupported() bool {
+	return true
+}
+
+func (n *JfsObjects) IsListenSupported() bool {
+	return true
+}
+
+func (n *JfsObjects) IsTaggingSupported() bool {
+	return true
 }

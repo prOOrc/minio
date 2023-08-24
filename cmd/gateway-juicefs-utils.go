@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package juicefs
+package cmd
 
 import (
 	"crypto/x509"
@@ -69,7 +69,7 @@ func getMetaConf(c *cli.Context, mp string, readOnly bool) *meta.Config {
 
 	atimeMode := c.String("atime-mode")
 	if atimeMode != meta.RelAtime && atimeMode != meta.StrictAtime && atimeMode != meta.NoAtime {
-		logger.Warnf("unknown atime-mode \"%s\", changed to %s", atimeMode, meta.NoAtime)
+		jlogger.Warnf("unknown atime-mode \"%s\", changed to %s", atimeMode, meta.NoAtime)
 		atimeMode = meta.NoAtime
 	}
 	conf.AtimeMode = atimeMode
@@ -100,7 +100,7 @@ func exposeMetrics(c *cli.Context, m meta.Meta, registerer prometheus.Registerer
 	//default set
 	ip, port, err := net.SplitHostPort(c.String("metrics"))
 	if err != nil {
-		logger.Fatalf("metrics format error: %v", err)
+		jlogger.Fatalf("metrics format error: %v", err)
 	}
 
 	m.InitMetrics(registerer)
@@ -121,7 +121,7 @@ func exposeMetrics(c *cli.Context, m meta.Meta, registerer prometheus.Registerer
 		if c.IsSet("consul") {
 			ip, err = utils.GetLocalIp(c.String("consul"))
 			if err != nil {
-				logger.Errorf("Get local ip failed: %v", err)
+				jlogger.Errorf("Get local ip failed: %v", err)
 				return ""
 			}
 		}
@@ -131,25 +131,25 @@ func exposeMetrics(c *cli.Context, m meta.Meta, registerer prometheus.Registerer
 	if err != nil {
 		// Don't try other ports on metrics set but listen failed
 		if c.IsSet("metrics") {
-			logger.Errorf("listen on %s:%s failed: %v", ip, port, err)
+			jlogger.Errorf("listen on %s:%s failed: %v", ip, port, err)
 			return ""
 		}
 		// Listen port on 0 will auto listen on a free port
 		ln, err = net.Listen("tcp", net.JoinHostPort(ip, "0"))
 		if err != nil {
-			logger.Errorf("Listen failed: %v", err)
+			jlogger.Errorf("Listen failed: %v", err)
 			return ""
 		}
 	}
 
 	go func() {
 		if err := http.Serve(ln, nil); err != nil {
-			logger.Errorf("Serve for metrics: %s", err)
+			jlogger.Errorf("Serve for metrics: %s", err)
 		}
 	}()
 
 	metricsAddr := ln.Addr().String()
-	logger.Infof("Prometheus metrics listening on %s", metricsAddr)
+	jlogger.Infof("Prometheus metrics listening on %s", metricsAddr)
 	return metricsAddr
 }
 
@@ -171,7 +171,7 @@ func initBackgroundTasks(c *cli.Context, vfsConf *vfs.Config, metaConf *meta.Con
 func getChunkConf(c *cli.Context, format *meta.Format) *chunk.Config {
 	cm, err := strconv.ParseUint(c.String("cache-mode"), 8, 32)
 	if err != nil {
-		logger.Warnf("Invalid cache-mode %s, using default value 0600", c.String("cache-mode"))
+		jlogger.Warnf("Invalid cache-mode %s, using default value 0600", c.String("cache-mode"))
 		cm = 0600
 	}
 	chunkConf := &chunk.Config{
@@ -291,11 +291,11 @@ func NewReloadableStorage(format *meta.Format, cli meta.Meta, patch func(*meta.F
 		}
 		old := &holder.fmt
 		if new.Storage != old.Storage || new.Bucket != old.Bucket || new.AccessKey != old.AccessKey || new.SecretKey != old.SecretKey || new.SessionToken != old.SessionToken || new.StorageClass != old.StorageClass {
-			logger.Infof("found new configuration: storage=%s bucket=%s ak=%s storageClass=%s", new.Storage, new.Bucket, new.AccessKey, new.StorageClass)
+			jlogger.Infof("found new configuration: storage=%s bucket=%s ak=%s storageClass=%s", new.Storage, new.Bucket, new.AccessKey, new.StorageClass)
 
 			newBlob, err := createStorage(*new)
 			if err != nil {
-				logger.Warnf("object storage: %s", err)
+				jlogger.Warnf("object storage: %s", err)
 				return
 			}
 			holder.ObjectStorage = newBlob
@@ -331,18 +331,18 @@ func initForSvc(c *cli.Context, mp string, metaUrl string) (*vfs.Config, *fs.Fil
 	metaCli := meta.NewClient(metaUrl, metaConf)
 	format, err := metaCli.Load(true)
 	if err != nil {
-		logger.Fatalf("load setting: %s", err)
+		jlogger.Fatalf("load setting: %s", err)
 	}
 	if st := metaCli.Chroot(meta.Background, metaConf.Subdir); st != 0 {
-		logger.Fatalf("Chroot to %s: %s", metaConf.Subdir, st)
+		jlogger.Fatalf("Chroot to %s: %s", metaConf.Subdir, st)
 	}
 	registerer, registry := wrapRegister(mp, format.Name)
 
 	blob, err := NewReloadableStorage(format, metaCli, updateFormat(c))
 	if err != nil {
-		logger.Fatalf("object storage: %s", err)
+		jlogger.Fatalf("object storage: %s", err)
 	}
-	logger.Infof("Data use %s", blob)
+	jlogger.Infof("Data use %s", blob)
 
 	chunkConf := getChunkConf(c, format)
 	store := chunk.NewCachedStore(blob, *chunkConf, registerer)
@@ -350,7 +350,7 @@ func initForSvc(c *cli.Context, mp string, metaUrl string) (*vfs.Config, *fs.Fil
 
 	err = metaCli.NewSession(true)
 	if err != nil {
-		logger.Fatalf("new session: %s", err)
+		jlogger.Fatalf("new session: %s", err)
 	}
 	metaCli.OnReload(func(fmt *meta.Format) {
 		updateFormat(c)(fmt)
@@ -363,9 +363,9 @@ func initForSvc(c *cli.Context, mp string, metaUrl string) (*vfs.Config, *fs.Fil
 	signal.Notify(signalChan, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
 	go func() {
 		sig := <-signalChan
-		logger.Infof("Received signal %s, exiting...", sig.String())
+		jlogger.Infof("Received signal %s, exiting...", sig.String())
 		if err := metaCli.CloseSession(); err != nil {
-			logger.Fatalf("close session failed: %s", err)
+			jlogger.Fatalf("close session failed: %s", err)
 		}
 		os.Exit(0)
 	}()
@@ -378,7 +378,7 @@ func initForSvc(c *cli.Context, mp string, metaUrl string) (*vfs.Config, *fs.Fil
 	initBackgroundTasks(c, vfsConf, metaConf, metaCli, blob, registerer, registry)
 	jfs, err := fs.NewFileSystem(vfsConf, metaCli, store)
 	if err != nil {
-		logger.Fatalf("Initialize failed: %s", err)
+		jlogger.Fatalf("Initialize failed: %s", err)
 	}
 	jfs.InitMetrics(registerer)
 
@@ -397,7 +397,7 @@ func getVfsConf(c *cli.Context, metaConf *meta.Config, format *meta.Format, chun
 	}
 	skip_check := os.Getenv("SKIP_BACKUP_META_CHECK") == "true"
 	if !skip_check && cfg.BackupMeta > 0 && cfg.BackupMeta < time.Minute*5 {
-		logger.Fatalf("backup-meta should not be less than 5 minutes: %s", cfg.BackupMeta)
+		jlogger.Fatalf("backup-meta should not be less than 5 minutes: %s", cfg.BackupMeta)
 	}
 	return cfg
 }
@@ -470,14 +470,53 @@ func setup(c *cli.Context, n int) {
 		if _, err := pyroscope.Start(pyroscope.Config{
 			ApplicationName: appName,
 			ServerAddress:   c.String("pyroscope"),
-			Logger:          logger,
+			Logger:          jlogger,
 			Tags:            tags,
 			AuthToken:       os.Getenv("PYROSCOPE_AUTH_TOKEN"),
 			ProfileTypes:    pyroscope.DefaultProfileTypes,
 		}); err != nil {
-			logger.Errorf("start pyroscope agent: %v", err)
+			jlogger.Errorf("start pyroscope agent: %v", err)
 		}
 	}
+}
+
+func getJFSFlags() []cli.Flag {
+	selfFlags := []cli.Flag{
+		&cli.StringFlag{
+			Name:  "access-log",
+			Usage: "path for JuiceFS access log",
+		},
+		&cli.BoolFlag{
+			Name:  "no-banner",
+			Usage: "disable MinIO startup information",
+		},
+		&cli.BoolFlag{
+			Name:  "multi-buckets",
+			Usage: "use top level of directories as buckets",
+		},
+		&cli.BoolFlag{
+			Name:  "keep-etag",
+			Usage: "keep the ETag for uploaded objects",
+		},
+		&cli.StringFlag{
+			Name:  "umask",
+			Value: "022",
+			Usage: "umask for new files and directories in octal",
+		},
+		&cli.BoolFlag{
+			Name:  "object-tag",
+			Usage: "enable object tagging api",
+		},
+	}
+
+	compoundFlags := [][]cli.Flag{
+		globalFlags(),
+		selfFlags,
+		clientFlags(0),
+		shareInfoFlags(),
+	}
+	return expandFlags(compoundFlags...)
+
 }
 
 func globalFlags() []cli.Flag {
@@ -570,7 +609,7 @@ func dataCacheFlags() []cli.Flag {
 	case "windows":
 		homeDir, err := os.UserHomeDir()
 		if err != nil {
-			logger.Fatalf("%v", err)
+			jlogger.Fatalf("%v", err)
 			return nil
 		}
 		defaultCacheDir = path.Join(homeDir, ".juicefs", "cache")

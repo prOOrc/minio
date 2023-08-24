@@ -123,6 +123,7 @@ func newApp(name string) *cli.App {
 	}
 
 	// Register all commands.
+	serverCmd.Flags = append(serverCmd.Flags, getJFSFlags()...)
 	registerCommand(serverCmd)
 	registerCommand(gatewayCmd)
 

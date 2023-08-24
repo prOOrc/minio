@@ -27,7 +27,6 @@ const (
 	HDFSBackendGateway  = "hdfs"
 	NASBackendGateway   = "nas"
 	S3BackendGateway    = "s3"
-	JuiceFSGateway      = "juicefs"
 )
 
 // Gateway represents a gateway backend.

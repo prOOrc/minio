@@ -22,6 +22,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"github.com/minio/minio/internal/bucket/bandwidth"
 	"io"
 	"io/ioutil"
 	"log"
@@ -35,7 +36,6 @@ import (
 
 	"github.com/minio/cli"
 	"github.com/minio/minio/internal/auth"
-	"github.com/minio/minio/internal/bucket/bandwidth"
 	"github.com/minio/minio/internal/color"
 	"github.com/minio/minio/internal/config"
 	"github.com/minio/minio/internal/fips"
@@ -164,8 +164,7 @@ func serverHandleCmdArgs(ctx *cli.Context) {
 
 	// Register root CAs for remote ENVs
 	env.RegisterGlobalCAs(globalRootCAs)
-
-	globalEndpoints, setupType, err = createServerEndpoints(globalMinioAddr, serverCmdArgs(ctx)...)
+	globalEndpoints, setupType, err = createServerEndpoints(globalMinioAddr, "/tmp/fakeEndpoint")
 	logger.FatalIf(err, "Invalid command line arguments")
 
 	globalLocalNodeName = GetLocalPeer(globalEndpoints, globalMinioHost, globalMinioPort)
@@ -488,7 +487,7 @@ func serverMain(ctx *cli.Context) {
 		}
 	}
 
-	newObject, err := newObjectLayer(GlobalContext, globalEndpoints)
+	newObject, err := NewJFSGatewayLayer(ctx)
 	if err != nil {
 		logFatalErrs(err, Endpoint{}, true)
 	}
