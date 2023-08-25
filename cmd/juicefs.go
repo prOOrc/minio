@@ -1183,9 +1183,12 @@ func (n *JfsObjects) PutObjectTags(ctx context.Context, bucket, object string, t
 	if _, err := n.DeleteObjectTags(ctx, bucket, object, opts); err != nil {
 		return ObjectInfo{}, err
 	}
-	splits := strings.Split(tags, "=")
-	if eno := n.fs.SetXattr(mctx, n.path(bucket, object), splits[0], []byte(splits[1]), 0); eno != 0 {
-		return ObjectInfo{}, eno
+	//tags: key1=value1&key2=value2&key3=value3
+	for _, kv := range strings.Split(tags, "&") {
+		splits := strings.Split(kv, "=")
+		if eno := n.fs.SetXattr(mctx, n.path(bucket, object), splits[0], []byte(splits[1]), 0); eno != 0 {
+			return ObjectInfo{}, eno
+		}
 	}
 	return n.GetObjectInfo(ctx, bucket, object, opts)
 }
