@@ -635,10 +635,10 @@ func (n *JfsObjects) GetObjectInfo(ctx context.Context, bucket, object string, o
 			split := bytes.Split(bytes.TrimSuffix(names, []byte{0}), []byte{0})
 			for idx, key := range split {
 				value, errno := n.fs.GetXattr(mctx, n.path(bucket, object), string(key))
-				if errno != 0 && errno != syscall.ENOATTR {
+				if errno != 0 && errno != ENOATTR {
 					return ObjectInfo{}, errno
 				}
-				if errno == syscall.ENOATTR {
+				if errno == ENOATTR {
 					continue
 				}
 				tagString += fmt.Sprintf("%s=%s", key, value)
