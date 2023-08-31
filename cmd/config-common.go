@@ -33,7 +33,7 @@ func readConfig(ctx context.Context, objAPI ObjectLayer, configFile string) ([]b
 	r, err := objAPI.GetObjectNInfo(ctx, MinioMetaBucket, configFile, nil, http.Header{}, readLock, ObjectOptions{})
 	if err != nil {
 		// Treat object not found as config not found.
-		if isErrObjectNotFound(err) {
+		if isErrObjectNotFound(err) || isErrBucketNotFound(err) {
 			return nil, errConfigNotFound
 		}
 
@@ -70,6 +70,12 @@ func saveConfig(ctx context.Context, objAPI ObjectLayer, configFile string, data
 	}
 
 	_, err = objAPI.PutObject(ctx, MinioMetaBucket, configFile, NewPutObjReader(hashReader), ObjectOptions{})
+	if errors.As(err, &BucketNotFound{}) {
+		if err := objAPI.MakeBucketWithLocation(ctx, MinioMetaBucket, BucketOptions{}); err != nil {
+			return err
+		}
+		_, err = objAPI.PutObject(ctx, MinioMetaBucket, configFile, NewPutObjReader(hashReader), ObjectOptions{})
+	}
 	return err
 }
 
