@@ -462,7 +462,7 @@ func generateListVersionsResponse(bucket, prefix, marker, versionIDMarker, delim
 		content.Owner = owner
 		content.VersionID = object.VersionID
 		if content.VersionID == "" {
-			content.VersionID = nullVersionID
+			content.VersionID = NullVersionID
 		}
 		content.IsLatest = object.IsLatest
 		content.isDeleteMarker = object.DeleteMarker

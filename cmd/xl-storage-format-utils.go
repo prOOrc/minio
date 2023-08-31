@@ -85,7 +85,7 @@ func getFileInfo(xlMetaBuf []byte, volume, path, versionID string, data bool) (F
 		}
 		versionID := fi.VersionID
 		if versionID == "" {
-			versionID = nullVersionID
+			versionID = NullVersionID
 		}
 		fi.Data = xlMeta.data.find(versionID)
 		if len(fi.Data) == 0 {

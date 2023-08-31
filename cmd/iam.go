@@ -572,7 +572,7 @@ func (sys *IAMSys) Init(ctx context.Context, objAPI ObjectLayer) {
 	defer cancel()
 
 	// Hold the lock for migration only.
-	txnLk := objAPI.NewNSLock(minioMetaBucket, minioConfigPrefix+"/iam.lock")
+	txnLk := objAPI.NewNSLock(MinioMetaBucket, minioConfigPrefix+"/iam.lock")
 
 	// allocate dynamic timeout once before the loop
 	iamLockTimeout := newDynamicTimeout(5*time.Second, 3*time.Second)

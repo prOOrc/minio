@@ -211,7 +211,7 @@ func (iamOS *IAMObjectStore) saveIAMConfig(ctx context.Context, item interface{}
 	}
 	if GlobalKMS != nil {
 		data, err = config.EncryptBytes(GlobalKMS, data, kms.Context{
-			minioMetaBucket: path.Join(minioMetaBucket, objPath),
+			MinioMetaBucket: path.Join(MinioMetaBucket, objPath),
 		})
 		if err != nil {
 			return err
@@ -228,7 +228,7 @@ func (iamOS *IAMObjectStore) loadIAMConfig(ctx context.Context, item interface{}
 	if !utf8.Valid(data) {
 		if GlobalKMS != nil {
 			data, err = config.DecryptBytes(GlobalKMS, data, kms.Context{
-				minioMetaBucket: path.Join(minioMetaBucket, objPath),
+				MinioMetaBucket: path.Join(MinioMetaBucket, objPath),
 			})
 			if err != nil {
 				data, err = madmin.DecryptData(globalActiveCred.String(), bytes.NewReader(data))
@@ -455,7 +455,7 @@ type itemOrErr struct {
 	Err  error
 }
 
-// Lists files or dirs in the minioMetaBucket at the given path
+// Lists files or dirs in the MinioMetaBucket at the given path
 // prefix. If dirs is true, only directories are listed, otherwise
 // only objects are listed. All returned items have the pathPrefix
 // removed from their names.
@@ -468,7 +468,7 @@ func listIAMConfigItems(ctx context.Context, objAPI ObjectLayer, pathPrefix stri
 		// Allocate new results channel to receive ObjectInfo.
 		objInfoCh := make(chan ObjectInfo)
 
-		if err := objAPI.Walk(ctx, minioMetaBucket, pathPrefix, objInfoCh, ObjectOptions{}); err != nil {
+		if err := objAPI.Walk(ctx, MinioMetaBucket, pathPrefix, objInfoCh, ObjectOptions{}); err != nil {
 			select {
 			case ch <- itemOrErr{Err: err}:
 			case <-ctx.Done():

@@ -850,7 +850,7 @@ func (er erasureObjects) HealObject(ctx context.Context, bucket, object, version
 
 	// When versionID is empty, we read directly from the `null` versionID for healing.
 	if versionID == "" {
-		versionID = nullVersionID
+		versionID = NullVersionID
 	}
 
 	partsMetadata, errs := readAllFileInfo(healCtx, storageDisks, bucket, object, versionID, false)

@@ -87,7 +87,7 @@ func migrateConfigPrefixToEncrypted(objAPI ObjectLayer, encrypted bool) error {
 
 	var marker string
 	for {
-		res, err := objAPI.ListObjects(GlobalContext, minioMetaBucket, minioConfigPrefix, marker, "", maxObjectList)
+		res, err := objAPI.ListObjects(GlobalContext, MinioMetaBucket, minioConfigPrefix, marker, "", maxObjectList)
 		if err != nil {
 			return err
 		}

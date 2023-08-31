@@ -421,7 +421,6 @@ func migrateV5ToV6() error {
 	srvConfig.Logger.File = cv5.Logger.File
 	srvConfig.Logger.Syslog = cv5.Logger.Syslog
 
-
 	if err = Save(configFile, srvConfig); err != nil {
 		return fmt.Errorf("Failed to migrate config from ‘%s’ to ‘%s’. %w", cv5.Version, srvConfig.Version, err)
 	}
@@ -536,7 +535,7 @@ func migrateV8ToV9() error {
 	srvConfig.Logger.File = cv8.Logger.File
 	srvConfig.Logger.Syslog = cv8.Logger.Syslog
 
-		if err = Save(configFile, srvConfig); err != nil {
+	if err = Save(configFile, srvConfig); err != nil {
 		return fmt.Errorf("Failed to migrate config from ‘%s’ to ‘%s’. %w", cv8.Version, srvConfig.Version, err)
 	}
 
@@ -571,8 +570,6 @@ func migrateV9ToV10() error {
 	}
 	srvConfig.Logger.Console = cv9.Logger.Console
 	srvConfig.Logger.File = cv9.Logger.File
-
-
 
 	if err = Save(configFile, srvConfig); err != nil {
 		return fmt.Errorf("Failed to migrate config from ‘%s’ to ‘%s’. %w", cv9.Version, srvConfig.Version, err)
@@ -645,7 +642,6 @@ func migrateV11ToV12() error {
 	}
 	srvConfig.Logger.Console = cv11.Logger.Console
 	srvConfig.Logger.File = cv11.Logger.File
-
 
 	if err = Save(configFile, srvConfig); err != nil {
 		return fmt.Errorf("Failed to migrate config from ‘%s’ to ‘%s’. %w", cv11.Version, srvConfig.Version, err)
@@ -722,7 +718,6 @@ func migrateV13ToV14() error {
 	}
 	srvConfig.Logger.Console = cv13.Logger.Console
 	srvConfig.Logger.File = cv13.Logger.File
-
 
 	// Set the new browser parameter to true by default
 	srvConfig.Browser = true
@@ -805,7 +800,6 @@ func migrateV15ToV16() error {
 		srvConfig.Region = globalMinioDefaultRegion
 	}
 
-
 	// Load browser config from existing config in the file.
 	srvConfig.Browser = cv15.Browser
 
@@ -848,8 +842,6 @@ func migrateV16ToV17() error {
 
 	srvConfig.Logger.Console = cv16.Logger.Console
 	srvConfig.Logger.File = cv16.Logger.File
-
-
 
 	// Load browser config from existing config in the file.
 	srvConfig.Browser = cv16.Browser
@@ -894,7 +886,6 @@ func migrateV17ToV18() error {
 	srvConfig.Logger.Console = cv17.Logger.Console
 	srvConfig.Logger.File = cv17.Logger.File
 
-
 	// Load browser config from existing config in the file.
 	srvConfig.Browser = cv17.Browser
 
@@ -935,7 +926,6 @@ func migrateV18ToV19() error {
 
 	srvConfig.Logger.Console = cv18.Logger.Console
 	srvConfig.Logger.File = cv18.Logger.File
-
 
 	// Load browser config from existing config in the file.
 	srvConfig.Browser = cv18.Browser
@@ -1015,7 +1005,6 @@ func migrateV20ToV21() error {
 		srvConfig.Region = globalMinioDefaultRegion
 	}
 
-
 	// Load browser config from existing config in the file.
 	srvConfig.Browser = cv20.Browser
 
@@ -1055,7 +1044,6 @@ func migrateV21ToV22() error {
 		// Region needs to be set for AWS Signature Version 4.
 		srvConfig.Region = globalMinioDefaultRegion
 	}
-
 
 	// Load browser config from existing config in the file.
 	srvConfig.Browser = cv21.Browser
@@ -1145,7 +1133,6 @@ func migrateV23ToV24() error {
 		// Region needs to be set for AWS Signature Version 4.
 		srvConfig.Region = globalMinioDefaultRegion
 	}
-
 
 	// Load browser config from existing config in the file.
 	srvConfig.Browser = cv23.Browser
@@ -1249,7 +1236,6 @@ func migrateV25ToV26() error {
 		// Region needs to be set for AWS Signature Version 4.
 		srvConfig.Region = globalMinioDefaultRegion
 	}
-
 
 	// Load browser config from existing config in the file.
 	srvConfig.Browser = cv25.Browser
@@ -1428,7 +1414,7 @@ func checkConfigVersion(objAPI ObjectLayer, configFile string, version string) (
 	if !utf8.Valid(data) {
 		if GlobalKMS != nil {
 			data, err = config.DecryptBytes(GlobalKMS, data, kms.Context{
-				minioMetaBucket: path.Join(minioMetaBucket, configFile),
+				MinioMetaBucket: path.Join(MinioMetaBucket, configFile),
 			})
 			if err != nil {
 				data, err = madmin.DecryptData(globalActiveCred.String(), bytes.NewReader(data))
@@ -1673,7 +1659,6 @@ func migrateMinioSysConfigToKV(objAPI ObjectLayer) error {
 	opa.SetPolicyOPAConfig(newCfg, cfg.Policy.OPA)
 	cache.SetCacheConfig(newCfg, cfg.Cache)
 	compress.SetCompressionConfig(newCfg, cfg.Compression)
-
 
 	if err = saveServerConfig(GlobalContext, objAPI, newCfg); err != nil {
 		return err

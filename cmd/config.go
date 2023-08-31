@@ -50,7 +50,7 @@ func listServerConfigHistory(ctx context.Context, objAPI ObjectLayer, withData b
 	// List all kvs
 	marker := ""
 	for {
-		res, err := objAPI.ListObjects(ctx, minioMetaBucket, minioConfigHistoryPrefix, marker, "", maxObjectList)
+		res, err := objAPI.ListObjects(ctx, MinioMetaBucket, minioConfigHistoryPrefix, marker, "", maxObjectList)
 		if err != nil {
 			return nil, err
 		}
@@ -94,7 +94,7 @@ func listServerConfigHistory(ctx context.Context, objAPI ObjectLayer, withData b
 
 func delServerConfigHistory(ctx context.Context, objAPI ObjectLayer, uuidKV string) error {
 	historyFile := pathJoin(minioConfigHistoryPrefix, uuidKV+kvPrefix)
-	_, err := objAPI.DeleteObject(ctx, minioMetaBucket, historyFile, ObjectOptions{})
+	_, err := objAPI.DeleteObject(ctx, MinioMetaBucket, historyFile, ObjectOptions{})
 	return err
 }
 
@@ -107,7 +107,7 @@ func readServerConfigHistory(ctx context.Context, objAPI ObjectLayer, uuidKV str
 
 	if GlobalKMS != nil {
 		data, err = config.DecryptBytes(GlobalKMS, data, kms.Context{
-			minioMetaBucket: path.Join(minioMetaBucket, historyFile),
+			MinioMetaBucket: path.Join(MinioMetaBucket, historyFile),
 		})
 	}
 	return data, err
@@ -120,7 +120,7 @@ func saveServerConfigHistory(ctx context.Context, objAPI ObjectLayer, kv []byte)
 	if GlobalKMS != nil {
 		var err error
 		kv, err = config.EncryptBytes(GlobalKMS, kv, kms.Context{
-			minioMetaBucket: path.Join(minioMetaBucket, historyFile),
+			MinioMetaBucket: path.Join(MinioMetaBucket, historyFile),
 		})
 		if err != nil {
 			return err
@@ -138,7 +138,7 @@ func saveServerConfig(ctx context.Context, objAPI ObjectLayer, cfg interface{}) 
 	var configFile = path.Join(minioConfigPrefix, minioConfigFile)
 	if GlobalKMS != nil {
 		data, err = config.EncryptBytes(GlobalKMS, data, kms.Context{
-			minioMetaBucket: path.Join(minioMetaBucket, configFile),
+			MinioMetaBucket: path.Join(MinioMetaBucket, configFile),
 		})
 		if err != nil {
 			return err
@@ -161,7 +161,7 @@ func readServerConfig(ctx context.Context, objAPI ObjectLayer) (config.Config, e
 
 	if GlobalKMS != nil && !utf8.Valid(data) {
 		data, err = config.DecryptBytes(GlobalKMS, data, kms.Context{
-			minioMetaBucket: path.Join(minioMetaBucket, configFile),
+			MinioMetaBucket: path.Join(MinioMetaBucket, configFile),
 		})
 		if err != nil {
 			return nil, err

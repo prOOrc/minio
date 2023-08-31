@@ -272,7 +272,7 @@ func testMakeBucketWebHandler(obj ObjectLayer, instanceType string, t TestErrHan
 		{".", false},
 		{"ab", false},
 		{"minio", false},
-		{minioMetaBucket, false},
+		{MinioMetaBucket, false},
 		{bucketName, true},
 	}
 

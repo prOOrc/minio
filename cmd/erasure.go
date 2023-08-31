@@ -67,7 +67,7 @@ type erasureObjects struct {
 	getEndpoints func() []string
 
 	// Locker mutex map.
-	nsMutex *nsLockMap
+	nsMutex *NsLockMap
 
 	// Byte pools used for temporary i/o buffers.
 	bp *bpool.BytePoolCap
@@ -330,7 +330,7 @@ func (er erasureObjects) cleanupDeletedObjects(ctx context.Context) {
 
 // nsScanner will start scanning buckets and send updated totals as they are traversed.
 // Updates are sent on a regular basis and the caller *must* consume them.
-func (er erasureObjects) nsScanner(ctx context.Context, buckets []BucketInfo, bf *bloomFilter, updates chan<- dataUsageCache) error {
+func (er erasureObjects) nsScanner(ctx context.Context, buckets []BucketInfo, bf *BloomFilter, updates chan<- dataUsageCache) error {
 	if len(buckets) == 0 {
 		return nil
 	}

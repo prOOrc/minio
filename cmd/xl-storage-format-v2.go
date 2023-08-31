@@ -604,7 +604,7 @@ func (z *xlMetaV2) AddLegacy(m *xlMetaV1Object) error {
 	if !m.valid() {
 		return errFileCorrupt
 	}
-	m.VersionID = nullVersionID
+	m.VersionID = NullVersionID
 	m.DataDir = legacyDataDir
 	z.Versions = []xlMetaV2Version{
 		{
@@ -715,12 +715,12 @@ func (z *xlMetaV2) UpdateObjectVersion(fi FileInfo) error {
 		// this means versioning is not yet
 		// enabled or suspend i.e all versions
 		// are basically default value i.e "null"
-		fi.VersionID = nullVersionID
+		fi.VersionID = NullVersionID
 	}
 
 	var uv uuid.UUID
 	var err error
-	if fi.VersionID != "" && fi.VersionID != nullVersionID {
+	if fi.VersionID != "" && fi.VersionID != NullVersionID {
 		uv, err = uuid.Parse(fi.VersionID)
 		if err != nil {
 			return err
@@ -764,12 +764,12 @@ func (z *xlMetaV2) AddVersion(fi FileInfo) error {
 		// this means versioning is not yet
 		// enabled or suspend i.e all versions
 		// are basically default value i.e "null"
-		fi.VersionID = nullVersionID
+		fi.VersionID = NullVersionID
 	}
 
 	var uv uuid.UUID
 	var err error
-	if fi.VersionID != "" && fi.VersionID != nullVersionID {
+	if fi.VersionID != "" && fi.VersionID != NullVersionID {
 		uv, err = uuid.Parse(fi.VersionID)
 		if err != nil {
 			return err
@@ -980,7 +980,7 @@ func (z *xlMetaV2) SharedDataDirCountStr(versionID, dataDir string) int {
 		ddir uuid.UUID
 		err  error
 	)
-	if versionID == nullVersionID {
+	if versionID == NullVersionID {
 		versionID = ""
 	}
 	if versionID != "" {
@@ -1024,7 +1024,7 @@ func (z *xlMetaV2) DeleteVersion(fi FileInfo) (string, bool, error) {
 	// specified as "null", as we do not save "null"
 	// string it is considered empty. But empty also
 	// means the version which matches will be purged.
-	if fi.VersionID == nullVersionID {
+	if fi.VersionID == NullVersionID {
 		fi.VersionID = ""
 	}
 
@@ -1228,7 +1228,7 @@ func getModTimeFromVersion(v xlMetaV2Version) time.Time {
 // for consumption across callers.
 func (z xlMetaV2) ToFileInfo(volume, path, versionID string) (fi FileInfo, err error) {
 	var uv uuid.UUID
-	if versionID != "" && versionID != nullVersionID {
+	if versionID != "" && versionID != NullVersionID {
 		uv, err = uuid.Parse(versionID)
 		if err != nil {
 			logger.LogIf(GlobalContext, fmt.Errorf("invalid versionID specified %s", versionID))

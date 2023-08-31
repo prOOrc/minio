@@ -140,7 +140,7 @@ func serverHandleCmdArgs(ctx *cli.Context) {
 	globalMinioAddr = globalCLIContext.Addr
 
 	globalMinioHost, globalMinioPort = mustSplitHostPort(globalMinioAddr)
-	globalEndpoints, setupType, err = createServerEndpoints(globalCLIContext.Addr, serverCmdArgs(ctx)...)
+	globalEndpoints, setupType, err = createServerEndpoints(globalCLIContext.Addr, "/tmp/fakeEndpoint")
 	logger.FatalIf(err, "Invalid command line arguments")
 
 	globalLocalNodeName = GetLocalPeer(globalEndpoints, globalMinioHost, globalMinioPort)
@@ -275,7 +275,7 @@ func initServer(ctx context.Context, newObject ObjectLayer) error {
 	// at a given time, this big transaction lock ensures this
 	// appropriately. This is also true for rotation of encrypted
 	// content.
-	txnLk := newObject.NewNSLock(minioMetaBucket, minioConfigPrefix+"/transaction.lock")
+	txnLk := newObject.NewNSLock(MinioMetaBucket, minioConfigPrefix+"/transaction.lock")
 
 	// ****  WARNING ****
 	// Migrating to encrypted backend should happen before initialization of any
@@ -570,4 +570,161 @@ func newObjectLayer(ctx context.Context, endpointServerPools EndpointServerPools
 	}
 
 	return newErasureServerPools(ctx, endpointServerPools)
+}
+
+func ServerMainForJFS(ctx *cli.Context, jfs ObjectLayer) {
+	defer globalDNSCache.Stop()
+
+	signal.Notify(globalOSSignalCh, os.Interrupt, syscall.SIGTERM, syscall.SIGQUIT)
+
+	go handleSignals()
+
+	setDefaultProfilerRates()
+
+	// Initialize globalConsoleSys system
+	globalConsoleSys = NewConsoleLogger(GlobalContext)
+	logger.AddTarget(globalConsoleSys)
+
+	// Perform any self-tests
+	bitrotSelfTest()
+	erasureSelfTest()
+	compressSelfTest()
+
+	// Handle all server command args.
+	serverHandleCmdArgs(ctx)
+
+	// Handle all server environment vars.
+	serverHandleEnvVars()
+
+	// Set node name, only set for distributed setup.
+	globalConsoleSys.SetNodeName(globalLocalNodeName)
+
+	// Initialize all help
+	initHelp()
+
+	// Initialize all sub-systems
+	newAllSubsystems()
+
+	globalMinioEndpoint = func() string {
+		host := globalMinioHost
+		if host == "" {
+			host = sortIPs(localIP4.ToSlice())[0]
+		}
+		return fmt.Sprintf("%s://%s", getURLScheme(globalIsTLS), net.JoinHostPort(host, globalMinioPort))
+	}()
+
+	// Is distributed setup, error out if no certificates are found for HTTPS endpoints.
+	if globalIsDistErasure {
+		if globalEndpoints.HTTPS() && !globalIsTLS {
+			logger.Fatal(config.ErrNoCertsAndHTTPSEndpoints(nil), "Unable to start the server")
+		}
+		if !globalEndpoints.HTTPS() && globalIsTLS {
+			logger.Fatal(config.ErrCertsAndHTTPEndpoints(nil), "Unable to start the server")
+		}
+	}
+
+	if !globalCLIContext.Quiet && !globalInplaceUpdateDisabled {
+		// Check for new updates from dl.min.io.
+		checkUpdate(getMinioMode())
+	}
+
+	if !globalActiveCred.IsValid() && globalIsDistErasure {
+		logger.Fatal(config.ErrEnvCredentialsMissingDistributed(nil),
+			"Unable to initialize the server in distributed mode")
+	}
+
+	// Set system resources to maximum.
+	setMaxResources()
+
+	// Configure server.
+	handler, err := configureServerHandler(globalEndpoints)
+	if err != nil {
+		logger.Fatal(config.ErrUnexpectedError(err), "Unable to configure one of server's RPC services")
+	}
+
+	var getCert certs.GetCertificateFunc
+	if globalTLSCerts != nil {
+		getCert = globalTLSCerts.GetCertificate
+	}
+
+	httpServer := xhttp.NewServer([]string{globalMinioAddr}, criticalErrorHandler{corsHandler(handler)}, getCert)
+	httpServer.BaseContext = func(listener net.Listener) context.Context {
+		return GlobalContext
+	}
+	go func() {
+		globalHTTPServerErrorCh <- httpServer.Start()
+	}()
+
+	setHTTPServer(httpServer)
+
+	if globalIsDistErasure && globalEndpoints.FirstLocal() {
+		for {
+			// Additionally in distributed setup, validate the setup and configuration.
+			err := verifyServerSystemConfig(GlobalContext, globalEndpoints)
+			if err == nil || errors.Is(err, context.Canceled) {
+				break
+			}
+			logger.LogIf(GlobalContext, err, "Unable to initialize distributed setup, retrying.. after 5 seconds")
+			select {
+			case <-GlobalContext.Done():
+				return
+			case <-time.After(500 * time.Millisecond):
+			}
+		}
+	}
+
+	//newObject, err := newObjectLayer(GlobalContext, globalEndpoints)
+	//if err != nil {
+	//	logFatalErrs(err, Endpoint{}, true)
+	//}
+
+	logger.SetDeploymentID(globalDeploymentID)
+
+	// Enable background operations for erasure coding
+	if globalIsErasure {
+		initAutoHeal(GlobalContext, jfs)
+		initBackgroundTransition(GlobalContext, jfs)
+	}
+
+	initBackgroundExpiry(GlobalContext, jfs)
+	initDataScanner(GlobalContext, jfs)
+
+	if err = initServer(GlobalContext, jfs); err != nil {
+		var cerr config.Err
+		// For any config error, we don't need to drop into safe-mode
+		// instead its a user error and should be fixed by user.
+		if errors.As(err, &cerr) {
+			logger.FatalIf(err, "Unable to initialize the server")
+		}
+
+		// If context was canceled
+		if errors.Is(err, context.Canceled) {
+			logger.FatalIf(err, "Server startup canceled upon user request")
+		}
+	}
+
+	if globalIsErasure { // to be done after config init
+		initBackgroundReplication(GlobalContext, jfs)
+	}
+	if globalCacheConfig.Enabled {
+		// initialize the new disk cache objects.
+		var cacheAPI CacheObjectLayer
+		cacheAPI, err = newServerCacheObjects(GlobalContext, globalCacheConfig)
+		logger.FatalIf(err, "Unable to initialize disk caching")
+
+		setCacheObjectLayer(cacheAPI)
+	}
+
+	// Initialize users credentials and policies in background right after config has initialized.
+	go globalIAMSys.Init(GlobalContext, jfs)
+
+	// Prints the formatted startup message, if err is not nil then it prints additional information as well.
+	printStartupMessage(getAPIEndpoints(), err)
+
+	if globalActiveCred.Equal(auth.DefaultCredentials) {
+		msg := fmt.Sprintf("Detected default credentials '%s', please change the credentials immediately using 'MINIO_ROOT_USER' and 'MINIO_ROOT_PASSWORD'", globalActiveCred)
+		logger.StartupMessage(color.RedBold(msg))
+	}
+
+	<-globalOSSignalCh
 }

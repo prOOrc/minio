@@ -581,7 +581,7 @@ func (s *peerRESTServer) LoadBucketMetadataHandler(w http.ResponseWriter, r *htt
 		return
 	}
 
-	meta, err := loadBucketMetadata(r.Context(), objAPI, bucketName)
+	meta, err := LoadBucketMetadata(r.Context(), objAPI, bucketName)
 	if err != nil {
 		s.writeErrorResponse(w, err)
 		return

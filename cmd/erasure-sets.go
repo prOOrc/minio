@@ -369,7 +369,7 @@ func newErasureSets(ctx context.Context, endpoints Endpoints, storageDisks []Sto
 		poolIndex:          poolIdx,
 	}
 
-	mutex := newNSLock(globalIsDistErasure)
+	mutex := NewNSLock(globalIsDistErasure)
 
 	// Number of buffers, max 2GB
 	n := (2 * humanize.GiByte) / (blockSizeV2 * 2)

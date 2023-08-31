@@ -184,7 +184,7 @@ func TestIsMinioMetaBucketName(t *testing.T) {
 	}{
 		// MinIO meta bucket.
 		{
-			bucket: minioMetaBucket,
+			bucket: MinioMetaBucket,
 			result: true,
 		},
 		// MinIO meta bucket.

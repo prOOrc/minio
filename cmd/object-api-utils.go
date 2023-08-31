@@ -53,13 +53,13 @@ import (
 
 const (
 	// MinIO meta bucket.
-	minioMetaBucket = ".minio.sys"
+	MinioMetaBucket = ".minio.sys"
 	// Multipart meta prefix.
 	mpartMetaPrefix = "multipart"
 	// MinIO Multipart meta prefix.
-	minioMetaMultipartBucket = minioMetaBucket + SlashSeparator + mpartMetaPrefix
+	minioMetaMultipartBucket = MinioMetaBucket + SlashSeparator + mpartMetaPrefix
 	// MinIO tmp meta prefix.
-	minioMetaTmpBucket = minioMetaBucket + "/tmp"
+	minioMetaTmpBucket = MinioMetaBucket + "/tmp"
 	// MinIO tmp meta prefix for deleted objects.
 	minioMetaTmpDeletedBucket = minioMetaTmpBucket + "/.trash"
 
@@ -76,7 +76,7 @@ const (
 // isMinioBucket returns true if given bucket is a MinIO internal
 // bucket and false otherwise.
 func isMinioMetaBucketName(bucket string) bool {
-	return bucket == minioMetaBucket ||
+	return bucket == MinioMetaBucket ||
 		bucket == minioMetaMultipartBucket ||
 		bucket == minioMetaTmpBucket ||
 		bucket == dataUsageBucket
@@ -349,7 +349,7 @@ func isReservedOrInvalidBucket(bucketEntry string, strict bool) bool {
 
 // Returns true if input bucket is a reserved minio meta bucket '.minio.sys'.
 func isMinioMetaBucket(bucketName string) bool {
-	return bucketName == minioMetaBucket
+	return bucketName == MinioMetaBucket
 }
 
 // Returns true if input bucket is a reserved minio bucket 'minio'.

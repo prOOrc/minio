@@ -51,7 +51,7 @@ import (
 )
 
 const (
-	nullVersionID  = "null"
+	NullVersionID  = "null"
 	blockSizeLarge = 2 * humanize.MiByte   // Default r/w block size for larger objects.
 	blockSizeSmall = 128 * humanize.KiByte // Default r/w block size for smaller objects.
 
@@ -278,7 +278,7 @@ func newXLStorage(ep Endpoint) (*xlStorage, error) {
 	}
 
 	// Create all necessary bucket folders if possible.
-	if err = p.MakeVolBulk(context.TODO(), minioMetaBucket, minioMetaTmpBucket, minioMetaMultipartBucket, dataUsageBucket); err != nil {
+	if err = p.MakeVolBulk(context.TODO(), MinioMetaBucket, minioMetaTmpBucket, minioMetaMultipartBucket, dataUsageBucket); err != nil {
 		return nil, err
 	}
 
@@ -364,7 +364,7 @@ func (s *xlStorage) SetDiskLoc(poolIdx, setIdx, diskIdx int) {
 }
 
 func (s *xlStorage) Healing() *healingTracker {
-	healingFile := pathJoin(s.diskPath, minioMetaBucket,
+	healingFile := pathJoin(s.diskPath, MinioMetaBucket,
 		bucketMetaPrefix, healingTrackerFilename)
 	b, err := ioutil.ReadFile(healingFile)
 	if err != nil {
@@ -526,7 +526,7 @@ func (s *xlStorage) GetDiskID() (string, error) {
 	}
 	s.Unlock()
 
-	formatFile := pathJoin(s.diskPath, minioMetaBucket, formatConfigFile)
+	formatFile := pathJoin(s.diskPath, MinioMetaBucket, formatConfigFile)
 	fi, err := Lstat(formatFile)
 	if err != nil {
 		// If the disk is still not initialized.
@@ -854,7 +854,7 @@ func (s *xlStorage) DeleteVersion(ctx context.Context, volume, path string, fi F
 		if dataDir != "" && fi.TransitionStatus != lifecycle.TransitionPending {
 			versionID := fi.VersionID
 			if versionID == "" {
-				versionID = nullVersionID
+				versionID = NullVersionID
 			}
 			xlMeta.data.remove(versionID)
 			// PR #11758 used DataDir, preserve it
@@ -2012,9 +2012,9 @@ func (s *xlStorage) RenameData(ctx context.Context, srcVolume, srcPath string, f
 	var oldDstDataPath string
 	if fi.VersionID == "" {
 		// return the latest "null" versionId info
-		ofi, err := xlMeta.ToFileInfo(dstVolume, dstPath, nullVersionID)
+		ofi, err := xlMeta.ToFileInfo(dstVolume, dstPath, NullVersionID)
 		if err == nil && !ofi.Deleted {
-			if xlMeta.SharedDataDirCountStr(nullVersionID, ofi.DataDir) == 0 {
+			if xlMeta.SharedDataDirCountStr(NullVersionID, ofi.DataDir) == 0 {
 				// Purge the destination path as we are not preserving anything
 				// versioned object was not requested.
 				oldDstDataPath = pathJoin(dstVolumeDir, dstPath, ofi.DataDir)
