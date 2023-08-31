@@ -163,7 +163,7 @@ func formatFSMigrate(ctx context.Context, wlk *lock.LockedFile, fsPath string) e
 // Creates a new format.json if unformatted.
 func createFormatFS(fsFormatPath string) error {
 	// Attempt a write lock on formatConfigFile `format.json`
-	// file stored in minioMetaBucket(.minio.sys) directory.
+	// file stored in MinioMetaBucket(.minio.sys) directory.
 	lk, err := lock.TryLockedOpenFile(fsFormatPath, os.O_RDWR|os.O_CREATE, 0600)
 	if err != nil {
 		return err
@@ -188,7 +188,7 @@ func createFormatFS(fsFormatPath string) error {
 // of the process so that another minio process does not try to
 // migrate the backend when we are actively working on the backend.
 func initFormatFS(ctx context.Context, fsPath string) (rlk *lock.RLockedFile, err error) {
-	fsFormatPath := pathJoin(fsPath, minioMetaBucket, formatConfigFile)
+	fsFormatPath := pathJoin(fsPath, MinioMetaBucket, formatConfigFile)
 
 	// Add a deployment ID, if it does not exist.
 	if err := formatFSFixDeploymentID(ctx, fsFormatPath); err != nil {

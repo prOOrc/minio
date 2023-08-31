@@ -31,7 +31,7 @@ const (
 	envDataUsageCrawlDebug = "MINIO_DISK_USAGE_CRAWL_DEBUG"
 
 	dataUsageRoot   = SlashSeparator
-	dataUsageBucket = minioMetaBucket + SlashSeparator + bucketMetaPrefix
+	dataUsageBucket = MinioMetaBucket + SlashSeparator + bucketMetaPrefix
 
 	dataUsageObjName   = ".usage.json"
 	dataUsageCacheName = ".usage-cache.bin"

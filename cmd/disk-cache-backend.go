@@ -150,7 +150,7 @@ type diskCache struct {
 	commitWriteback  bool
 	retryWritebackCh chan ObjectInfo
 	// nsMutex namespace lock
-	nsMutex *nsLockMap
+	nsMutex *NsLockMap
 	// Object functions pointing to the corresponding functions of backend implementation.
 	NewNSLockFn func(cachePath string) RWLocker
 }
@@ -183,7 +183,7 @@ func newDiskCache(ctx context.Context, dir string, config cache.Config) (*diskCa
 				return &b
 			},
 		},
-		nsMutex: newNSLock(false),
+		nsMutex: NewNSLock(false),
 	}
 	go cache.purgeWait(ctx)
 	if cache.commitWriteback {
@@ -317,7 +317,7 @@ func (c *diskCache) purge(ctx context.Context) {
 	}
 
 	filterFn := func(name string, typ os.FileMode) error {
-		if name == minioMetaBucket {
+		if name == MinioMetaBucket {
 			// Proceed to next file.
 			return nil
 		}
@@ -997,7 +997,7 @@ func (c *diskCache) Exists(ctx context.Context, bucket, object string) bool {
 func (c *diskCache) scanCacheWritebackFailures(ctx context.Context) {
 	defer close(c.retryWritebackCh)
 	filterFn := func(name string, typ os.FileMode) error {
-		if name == minioMetaBucket {
+		if name == MinioMetaBucket {
 			// Proceed to next file.
 			return nil
 		}

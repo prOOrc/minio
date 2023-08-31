@@ -71,7 +71,7 @@ func initDataScanner(ctx context.Context, objAPI ObjectLayer) {
 // There should only ever be one scanner running per cluster.
 func runDataScanner(ctx context.Context, objAPI ObjectLayer) {
 	// Make sure only 1 scanner is running on the cluster.
-	locker := objAPI.NewNSLock(minioMetaBucket, "runDataScanner.lock")
+	locker := objAPI.NewNSLock(MinioMetaBucket, "runDataScanner.lock")
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	for {
 		err := locker.GetLock(ctx, dataScannerLeaderLockTimeout)
@@ -154,7 +154,7 @@ type folderScanner struct {
 	getSize    getSizeFn
 	oldCache   dataUsageCache
 	newCache   dataUsageCache
-	withFilter *bloomFilter
+	withFilter *BloomFilter
 
 	dataUsageCrawlDebug bool
 	healFolderInclude   uint32 // Include a clean folder one in n cycles.
@@ -220,7 +220,7 @@ func crawlDataFolder(ctx context.Context, basePath string, cache dataUsageCache,
 		s.healObjectSelect = healObjectSelectProb
 	}
 	if len(cache.Info.BloomFilter) > 0 {
-		s.withFilter = &bloomFilter{BloomFilter: &bloom.BloomFilter{}}
+		s.withFilter = &BloomFilter{BloomFilter: &bloom.BloomFilter{}}
 		_, err := s.withFilter.ReadFrom(bytes.NewReader(cache.Info.BloomFilter))
 		if err != nil {
 			logger.LogIf(ctx, err, logPrefix+"Error reading bloom filter")

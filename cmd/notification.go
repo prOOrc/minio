@@ -429,7 +429,7 @@ func (sys *NotificationSys) SignalService(sig serviceSignal) []NotificationPeerE
 
 // updateBloomFilter will cycle all servers to the current index and
 // return a merged bloom filter if a complete one can be retrieved.
-func (sys *NotificationSys) updateBloomFilter(ctx context.Context, current uint64) (*bloomFilter, error) {
+func (sys *NotificationSys) updateBloomFilter(ctx context.Context, current uint64) (*BloomFilter, error) {
 	var req = bloomFilterRequest{
 		Current: current,
 		Oldest:  current - dataUsageUpdateDirCycles,
@@ -439,7 +439,7 @@ func (sys *NotificationSys) updateBloomFilter(ctx context.Context, current uint6
 	}
 
 	// Load initial state from local...
-	var bf *bloomFilter
+	var bf *BloomFilter
 	bfr, err := intDataUpdateTracker.cycleFilter(ctx, req)
 	logger.LogIf(ctx, err)
 	if err == nil && bfr.Complete {
@@ -497,14 +497,14 @@ func (sys *NotificationSys) updateBloomFilter(ctx context.Context, current uint6
 }
 
 // collectBloomFilter will collect bloom filters from all servers from the specified cycle.
-func (sys *NotificationSys) collectBloomFilter(ctx context.Context, from uint64) (*bloomFilter, error) {
+func (sys *NotificationSys) collectBloomFilter(ctx context.Context, from uint64) (*BloomFilter, error) {
 	var req = bloomFilterRequest{
 		Current: 0,
 		Oldest:  from,
 	}
 
 	// Load initial state from local...
-	var bf *bloomFilter
+	var bf *BloomFilter
 	bfr, err := intDataUpdateTracker.cycleFilter(ctx, req)
 	logger.LogIf(ctx, err)
 	if err == nil && bfr.Complete {

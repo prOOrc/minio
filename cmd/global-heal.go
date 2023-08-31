@@ -123,11 +123,11 @@ func mustGetHealSequence(ctx context.Context) *healSequence {
 func (er *erasureObjects) healErasureSet(ctx context.Context, buckets []BucketInfo) error {
 	bgSeq := mustGetHealSequence(ctx)
 	buckets = append(buckets, BucketInfo{
-		Name: pathJoin(minioMetaBucket, minioConfigPrefix),
+		Name: pathJoin(MinioMetaBucket, minioConfigPrefix),
 	})
 
 	// Try to pro-actively heal backend-encrypted file.
-	if _, err := er.HealObject(ctx, minioMetaBucket, backendEncryptedFile, "", madmin.HealOpts{}); err != nil {
+	if _, err := er.HealObject(ctx, MinioMetaBucket, backendEncryptedFile, "", madmin.HealOpts{}); err != nil {
 		if !isErrObjectNotFound(err) && !isErrVersionNotFound(err) {
 			logger.LogIf(ctx, err)
 		}

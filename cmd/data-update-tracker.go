@@ -94,21 +94,21 @@ type dataUpdateTrackerHistory []dataUpdateFilter
 
 type dataUpdateFilter struct {
 	idx uint64
-	bf  bloomFilter
+	bf  BloomFilter
 }
 
-type bloomFilter struct {
+type BloomFilter struct {
 	*bloom.BloomFilter
 }
 
 // emptyBloomFilter returns an empty bloom filter.
-func emptyBloomFilter() bloomFilter {
-	return bloomFilter{BloomFilter: &bloom.BloomFilter{}}
+func emptyBloomFilter() BloomFilter {
+	return BloomFilter{BloomFilter: &bloom.BloomFilter{}}
 }
 
 // containsDir returns whether the bloom filter contains a directory.
 // Note that objects in XL mode are also considered directories.
-func (b bloomFilter) containsDir(in string) bool {
+func (b BloomFilter) containsDir(in string) bool {
 	split := splitPathDeterministic(path.Clean(in))
 
 	if len(split) == 0 {
@@ -118,7 +118,7 @@ func (b bloomFilter) containsDir(in string) bool {
 }
 
 // bytes returns the bloom filter serialized as a byte slice.
-func (b *bloomFilter) bytes() []byte {
+func (b *BloomFilter) bytes() []byte {
 	if b == nil || b.BloomFilter == nil {
 		return nil
 	}
@@ -158,8 +158,8 @@ func (d *dataUpdateTrackerHistory) removeOlderThan(n uint64) {
 }
 
 // newBloomFilter returns a new bloom filter with default settings.
-func (d *dataUpdateTracker) newBloomFilter() bloomFilter {
-	return bloomFilter{bloom.NewWithEstimates(dataUpdateTrackerEstItems, dataUpdateTrackerFP)}
+func (d *dataUpdateTracker) newBloomFilter() BloomFilter {
+	return BloomFilter{bloom.NewWithEstimates(dataUpdateTrackerEstItems, dataUpdateTrackerFP)}
 }
 
 // current returns the current index.

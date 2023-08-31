@@ -65,7 +65,7 @@ type erasureObjects struct {
 	getEndpoints func() []string
 
 	// Locker mutex map.
-	nsMutex *nsLockMap
+	nsMutex *NsLockMap
 
 	// Byte pools used for temporary i/o buffers.
 	bp *bpool.BytePoolCap
@@ -275,7 +275,7 @@ func (er erasureObjects) getOnlineDisksWithHealing() (newDisks []StorageAPI, hea
 
 // CrawlAndGetDataUsage will start crawling buckets and send updated totals as they are traversed.
 // Updates are sent on a regular basis and the caller *must* consume them.
-func (er erasureObjects) crawlAndGetDataUsage(ctx context.Context, buckets []BucketInfo, bf *bloomFilter, updates chan<- dataUsageCache) error {
+func (er erasureObjects) crawlAndGetDataUsage(ctx context.Context, buckets []BucketInfo, bf *BloomFilter, updates chan<- dataUsageCache) error {
 	if len(buckets) == 0 {
 		return nil
 	}

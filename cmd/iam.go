@@ -567,7 +567,7 @@ func (sys *IAMSys) Init(ctx context.Context, objAPI ObjectLayer) {
 	defer cancel()
 
 	// Hold the lock for migration only.
-	txnLk := objAPI.NewNSLock(minioMetaBucket, minioConfigPrefix+"/iam.lock")
+	txnLk := objAPI.NewNSLock(MinioMetaBucket, minioConfigPrefix+"/iam.lock")
 
 	// Initializing IAM sub-system needs a retry mechanism for
 	// the following reasons:

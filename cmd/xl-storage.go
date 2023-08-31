@@ -52,7 +52,7 @@ import (
 )
 
 const (
-	nullVersionID  = "null"
+	NullVersionID  = "null"
 	blockSizeLarge = 2 * humanize.MiByte   // Default r/w block size for larger objects.
 	blockSizeSmall = 128 * humanize.KiByte // Default r/w block size for smaller objects.
 
@@ -244,7 +244,7 @@ func newXLStorage(ep Endpoint) (*xlStorage, error) {
 	}
 
 	// Create all necessary bucket folders if possible.
-	if err = p.MakeVolBulk(context.TODO(), minioMetaBucket, minioMetaTmpBucket, minioMetaMultipartBucket, dataUsageBucket); err != nil {
+	if err = p.MakeVolBulk(context.TODO(), MinioMetaBucket, minioMetaTmpBucket, minioMetaMultipartBucket, dataUsageBucket); err != nil {
 		return nil, err
 	}
 
@@ -320,7 +320,7 @@ func (s *xlStorage) IsLocal() bool {
 }
 
 func (s *xlStorage) Healing() bool {
-	healingFile := pathJoin(s.diskPath, minioMetaBucket,
+	healingFile := pathJoin(s.diskPath, MinioMetaBucket,
 		bucketMetaPrefix, healingTrackerFilename)
 	_, err := os.Lstat(healingFile)
 	return err == nil
@@ -481,7 +481,7 @@ func (s *xlStorage) GetDiskID() (string, error) {
 	}
 	s.Unlock()
 
-	formatFile := pathJoin(s.diskPath, minioMetaBucket, formatConfigFile)
+	formatFile := pathJoin(s.diskPath, MinioMetaBucket, formatConfigFile)
 	fi, err := os.Lstat(formatFile)
 	if err != nil {
 		// If the disk is still not initialized.
@@ -2152,7 +2152,7 @@ func (s *xlStorage) RenameData(ctx context.Context, srcVolume, srcPath, dataDir,
 	var oldDstDataPath string
 	if fi.VersionID == "" {
 		// return the latest "null" versionId info
-		ofi, err := xlMeta.ToFileInfo(dstVolume, dstPath, nullVersionID)
+		ofi, err := xlMeta.ToFileInfo(dstVolume, dstPath, NullVersionID)
 		if err == nil && !ofi.Deleted {
 			// Purge the destination path as we are not preserving anything
 			// versioned object was not requested.

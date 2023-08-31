@@ -80,7 +80,7 @@ type BucketMetadata struct {
 	BucketTargetsConfigMetaJSON []byte
 
 	// Unexported fields. Must be updated atomically.
-	policyConfig           *policy.Policy
+	PolicyConfig           *policy.Policy
 	notificationConfig     *event.Config
 	lifecycleConfig        *lifecycle.Lifecycle
 	objectLockConfig       *objectlock.Config
@@ -123,18 +123,18 @@ func (b *BucketMetadata) Load(ctx context.Context, api ObjectLayer, name string)
 		return err
 	}
 	if len(data) <= 4 {
-		return fmt.Errorf("loadBucketMetadata: no data")
+		return fmt.Errorf("LoadBucketMetadata: no data")
 	}
 	// Read header
 	switch binary.LittleEndian.Uint16(data[0:2]) {
 	case bucketMetadataFormat:
 	default:
-		return fmt.Errorf("loadBucketMetadata: unknown format: %d", binary.LittleEndian.Uint16(data[0:2]))
+		return fmt.Errorf("LoadBucketMetadata: unknown format: %d", binary.LittleEndian.Uint16(data[0:2]))
 	}
 	switch binary.LittleEndian.Uint16(data[2:4]) {
 	case bucketMetadataVersion:
 	default:
-		return fmt.Errorf("loadBucketMetadata: unknown version: %d", binary.LittleEndian.Uint16(data[2:4]))
+		return fmt.Errorf("LoadBucketMetadata: unknown version: %d", binary.LittleEndian.Uint16(data[2:4]))
 	}
 	// OK, parse data.
 	_, err = b.UnmarshalMsg(data[4:])
@@ -142,8 +142,8 @@ func (b *BucketMetadata) Load(ctx context.Context, api ObjectLayer, name string)
 	return err
 }
 
-// loadBucketMetadata loads and migrates to bucket metadata.
-func loadBucketMetadata(ctx context.Context, objectAPI ObjectLayer, bucket string) (BucketMetadata, error) {
+// LoadBucketMetadata loads and migrates to bucket metadata.
+func LoadBucketMetadata(ctx context.Context, objectAPI ObjectLayer, bucket string) (BucketMetadata, error) {
 	b := newBucketMetadata(bucket)
 	err := b.Load(ctx, objectAPI, b.Name)
 	if err != nil && !errors.Is(err, errConfigNotFound) {
@@ -162,12 +162,12 @@ func loadBucketMetadata(ctx context.Context, objectAPI ObjectLayer, bucket strin
 // The first error encountered is returned.
 func (b *BucketMetadata) parseAllConfigs(ctx context.Context, objectAPI ObjectLayer) (err error) {
 	if len(b.PolicyConfigJSON) != 0 {
-		b.policyConfig, err = policy.ParseConfig(bytes.NewReader(b.PolicyConfigJSON), b.Name)
+		b.PolicyConfig, err = policy.ParseConfig(bytes.NewReader(b.PolicyConfigJSON), b.Name)
 		if err != nil {
 			return err
 		}
 	} else {
-		b.policyConfig = nil
+		b.PolicyConfig = nil
 	}
 
 	if len(b.NotificationConfigXML) != 0 {

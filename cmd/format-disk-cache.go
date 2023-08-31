@@ -132,12 +132,12 @@ func createFormatCache(fsFormatPath string, format *formatCacheV1) error {
 func initFormatCache(ctx context.Context, drives []string) (formats []*formatCacheV2, err error) {
 	nformats := newFormatCacheV2(drives)
 	for i, drive := range drives {
-		if err = os.MkdirAll(pathJoin(drive, minioMetaBucket), 0777); err != nil {
+		if err = os.MkdirAll(pathJoin(drive, MinioMetaBucket), 0777); err != nil {
 			logger.GetReqInfo(ctx).AppendTags("drive", drive)
 			logger.LogIf(ctx, err)
 			return nil, err
 		}
-		cacheFormatPath := pathJoin(drive, minioMetaBucket, formatConfigFile)
+		cacheFormatPath := pathJoin(drive, MinioMetaBucket, formatConfigFile)
 		// Fresh disk - create format.json for this cfs
 		if err = createFormatCache(cacheFormatPath, nformats[i]); err != nil {
 			logger.GetReqInfo(ctx).AppendTags("drive", drive)
@@ -153,7 +153,7 @@ func loadFormatCache(ctx context.Context, drives []string) ([]*formatCacheV2, bo
 	var formatV2 *formatCacheV2
 	migrating := false
 	for i, drive := range drives {
-		cacheFormatPath := pathJoin(drive, minioMetaBucket, formatConfigFile)
+		cacheFormatPath := pathJoin(drive, MinioMetaBucket, formatConfigFile)
 		f, err := os.OpenFile(cacheFormatPath, os.O_RDWR, 0)
 
 		if err != nil {
@@ -317,7 +317,7 @@ func validateCacheFormats(ctx context.Context, migrating bool, formats []*format
 func cacheDrivesUnformatted(drives []string) bool {
 	count := 0
 	for _, drive := range drives {
-		cacheFormatPath := pathJoin(drive, minioMetaBucket, formatConfigFile)
+		cacheFormatPath := pathJoin(drive, MinioMetaBucket, formatConfigFile)
 		if _, err := os.Stat(cacheFormatPath); osIsNotExist(err) {
 			count++
 		}
@@ -371,19 +371,20 @@ func migrateCacheData(ctx context.Context, c *diskCache, bucket, object, oldfile
 
 // migrate cache contents from old cacheFS format to new backend format
 // new format is flat
-//  sha(bucket,object)/  <== dir name
-//      - part.1         <== data
-//      - cache.json     <== metadata
+//
+//	sha(bucket,object)/  <== dir name
+//	    - part.1         <== data
+//	    - cache.json     <== metadata
 func migrateOldCache(ctx context.Context, c *diskCache) error {
-	oldCacheBucketsPath := path.Join(c.dir, minioMetaBucket, "buckets")
-	cacheFormatPath := pathJoin(c.dir, minioMetaBucket, formatConfigFile)
+	oldCacheBucketsPath := path.Join(c.dir, MinioMetaBucket, "buckets")
+	cacheFormatPath := pathJoin(c.dir, MinioMetaBucket, formatConfigFile)
 
 	if _, err := os.Stat(oldCacheBucketsPath); err != nil {
 		// remove .minio.sys sub directories
-		removeAll(path.Join(c.dir, minioMetaBucket, "multipart"))
-		removeAll(path.Join(c.dir, minioMetaBucket, "tmp"))
-		removeAll(path.Join(c.dir, minioMetaBucket, "trash"))
-		removeAll(path.Join(c.dir, minioMetaBucket, "buckets"))
+		removeAll(path.Join(c.dir, MinioMetaBucket, "multipart"))
+		removeAll(path.Join(c.dir, MinioMetaBucket, "tmp"))
+		removeAll(path.Join(c.dir, MinioMetaBucket, "trash"))
+		removeAll(path.Join(c.dir, MinioMetaBucket, "buckets"))
 		// just migrate cache format
 		return migrateCacheFormatJSON(cacheFormatPath)
 	}
@@ -468,10 +469,10 @@ func migrateOldCache(ctx context.Context, c *diskCache) error {
 	}
 
 	// remove .minio.sys sub directories
-	removeAll(path.Join(c.dir, minioMetaBucket, "multipart"))
-	removeAll(path.Join(c.dir, minioMetaBucket, "tmp"))
-	removeAll(path.Join(c.dir, minioMetaBucket, "trash"))
-	removeAll(path.Join(c.dir, minioMetaBucket, "buckets"))
+	removeAll(path.Join(c.dir, MinioMetaBucket, "multipart"))
+	removeAll(path.Join(c.dir, MinioMetaBucket, "tmp"))
+	removeAll(path.Join(c.dir, MinioMetaBucket, "trash"))
+	removeAll(path.Join(c.dir, MinioMetaBucket, "buckets"))
 
 	return migrateCacheFormatJSON(cacheFormatPath)
 
