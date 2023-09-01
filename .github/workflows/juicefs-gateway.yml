@@ -32,7 +32,7 @@ jobs:
           make
           export MINIO_ROOT_USER=testUser
           export MINIO_ROOT_PASSWORD=testUserPassword
-          ./minio  gateway  juicefs --multi-buckets --keep-etag --address 127.0.0.1:9008 "redis://localhost:6379/1" > minio.log 2>&1 &
+          ./minio  server  "redis://localhost:6379/1" --multi-buckets --keep-etag --address 127.0.0.1:9008 > minio.log 2>&1 &
           sleep 2
           make s3-gateway-test
 
