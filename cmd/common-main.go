@@ -33,6 +33,7 @@ import (
 	"time"
 
 	"github.com/fatih/color"
+	dns2 "github.com/miekg/dns"
 	"github.com/minio/cli"
 	"github.com/minio/minio-go/v7/pkg/set"
 	"github.com/minio/minio/cmd/config"
@@ -252,6 +253,10 @@ func handleCommonEnvVars() {
 	domains := env.Get(config.EnvDomain, "")
 	if len(domains) != 0 {
 		for _, domainName := range strings.Split(domains, config.ValueSeparator) {
+			if _, ok := dns2.IsDomainName(domainName); !ok {
+				logger.Fatal(config.ErrInvalidDomainValue(nil).Msg("Unknown value `%s`", domainName),
+					"Invalid MINIO_DOMAIN value in environment variable")
+			}
 			globalDomainNames = append(globalDomainNames, domainName)
 		}
 		sort.Strings(globalDomainNames)
