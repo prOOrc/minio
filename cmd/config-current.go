@@ -208,16 +208,10 @@ func initHelp() {
 		config.KmsKesSubSys:         crypto.HelpKes,
 		config.LoggerWebhookSubSys:  logger.Help,
 		config.AuditWebhookSubSys:   logger.HelpAudit,
-		config.NotifyAMQPSubSys:     notify.HelpAMQP,
-		config.NotifyKafkaSubSys:    notify.HelpKafka,
-		config.NotifyMQTTSubSys:     notify.HelpMQTT,
-		config.NotifyNATSSubSys:     notify.HelpNATS,
-		config.NotifyNSQSubSys:      notify.HelpNSQ,
 		config.NotifyMySQLSubSys:    notify.HelpMySQL,
 		config.NotifyPostgresSubSys: notify.HelpPostgres,
 		config.NotifyRedisSubSys:    notify.HelpRedis,
 		config.NotifyWebhookSubSys:  notify.HelpWebhook,
-		config.NotifyESSubSys:       notify.HelpES,
 	}
 
 	config.RegisterHelpSubSys(helpMap)
