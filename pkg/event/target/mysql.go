@@ -72,12 +72,18 @@ import (
 )
 
 const (
-	mysqlTableExists          = `SELECT 1 FROM %s;`
-	mysqlCreateNamespaceTable = `CREATE TABLE %s (key_name VARCHAR(2048), value JSON, PRIMARY KEY (key_name));`
-	mysqlCreateAccessTable    = `CREATE TABLE %s (event_time DATETIME NOT NULL, event_data JSON);`
+	mysqlTableExists = `SELECT 1 FROM %s;`
+	// Some MySQL has a 3072 byte limit on key sizes.
+	mysqlCreateNamespaceTable = `CREATE TABLE %s (
+             key_name VARCHAR(3072) NOT NULL,
+             key_hash CHAR(64) GENERATED ALWAYS AS (SHA2(key_name, 256)) STORED NOT NULL PRIMARY KEY,
+             VALUE JSON)
+           CHARACTER SET = utf8mb4 COLLATE = utf8mb4_bin ROW_FORMAT = DYNAMIC;`
+	mysqlCreateAccessTable = `CREATE TABLE %s (event_time DATETIME NOT NULL, event_data JSON)
+                                    ROW_FORMAT = DYNAMIC;`
 
-	mysqlUpdateRow = `INSERT INTO %s (key_name, value) VALUES (?, ?) ON DUPLICATE KEY UPDATE value=VALUES(value);`
-	mysqlDeleteRow = `DELETE FROM %s WHERE key_name = ?;`
+	mysqlUpdateRow = `INSERT INTO %s (key_name, VALUE) VALUES (?, ?) ON DUPLICATE KEY UPDATE VALUE=VALUES(VALUE);`
+	mysqlDeleteRow = `DELETE FROM %s WHERE key_hash = SHA2(?, 256);`
 	mysqlInsertRow = `INSERT INTO %s (event_time, event_data) VALUES (?, ?);`
 )
 
