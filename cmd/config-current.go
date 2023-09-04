@@ -28,6 +28,7 @@ import (
 	"github.com/minio/minio/cmd/config/cache"
 	"github.com/minio/minio/cmd/config/compress"
 	"github.com/minio/minio/cmd/config/dns"
+	"github.com/minio/minio/cmd/config/etcd"
 	"github.com/minio/minio/cmd/config/heal"
 	xldap "github.com/minio/minio/cmd/config/identity/ldap"
 	"github.com/minio/minio/cmd/config/identity/openid"
@@ -45,6 +46,7 @@ import (
 
 func initHelp() {
 	var kvs = map[string]config.KVS{
+		config.EtcdSubSys:           etcd.DefaultKVS,
 		config.CacheSubSys:          cache.DefaultKVS,
 		config.CompressionSubSys:    compress.DefaultKVS,
 		config.IdentityLDAPSubSys:   xldap.DefaultKVS,
@@ -194,6 +196,7 @@ func initHelp() {
 		config.RegionSubSys:         config.RegionHelp,
 		config.APISubSys:            api.Help,
 		config.StorageClassSubSys:   storageclass.Help,
+		config.EtcdSubSys:           etcd.Help,
 		config.CacheSubSys:          cache.Help,
 		config.CompressionSubSys:    compress.Help,
 		config.HealSubSys:           heal.Help,
@@ -280,6 +283,19 @@ func validateConfig(s config.Config, setDriveCounts []int) error {
 	}
 
 	{
+		etcdCfg, err := etcd.LookupConfig(s[config.EtcdSubSys][config.Default], globalRootCAs)
+		if err != nil {
+			return err
+		}
+		if etcdCfg.Enabled {
+			etcdClnt, err := etcd.New(etcdCfg)
+			if err != nil {
+				return err
+			}
+			etcdClnt.Close()
+		}
+	}
+	{
 		kmsCfg, err := crypto.LookupConfig(s, globalCertsCADir.Get(), newCustomHTTPTransportWithHTTP2(
 			&tls.Config{
 				RootCAs: globalRootCAs,
@@ -356,6 +372,58 @@ func lookupConfigs(s config.Config, setDriveCounts []int) {
 			}
 		}
 	}
+
+	etcdCfg, err := etcd.LookupConfig(s[config.EtcdSubSys][config.Default], globalRootCAs)
+	if err != nil {
+		if globalIsGateway {
+			logger.FatalIf(err, "Unable to initialize etcd config")
+		} else {
+			logger.LogIf(ctx, fmt.Errorf("Unable to initialize etcd config: %w", err))
+		}
+	}
+
+	if etcdCfg.Enabled {
+		if globalEtcdClient == nil {
+			globalEtcdClient, err = etcd.New(etcdCfg)
+			if err != nil {
+				if globalIsGateway {
+					logger.FatalIf(err, "Unable to initialize etcd config")
+				} else {
+					logger.LogIf(ctx, fmt.Errorf("Unable to initialize etcd config: %w", err))
+				}
+			}
+		}
+
+		if len(globalDomainNames) != 0 && !globalDomainIPs.IsEmpty() && globalEtcdClient != nil {
+			if globalDNSConfig != nil {
+				// if global DNS is already configured, indicate with a warning, incase
+				// users are confused.
+				logger.LogIf(ctx, fmt.Errorf("DNS store is already configured with %s, not using etcd for DNS store", globalDNSConfig))
+			} else {
+				globalDNSConfig, err = dns.NewCoreDNS(etcdCfg.Config,
+					dns.DomainNames(globalDomainNames),
+					dns.DomainIPs(globalDomainIPs),
+					dns.DomainPort(globalMinioPort),
+					dns.CoreDNSPath(etcdCfg.CoreDNSPath),
+				)
+				if err != nil {
+					if globalIsGateway {
+						logger.FatalIf(err, "Unable to initialize DNS config")
+					} else {
+						logger.LogIf(ctx, fmt.Errorf("Unable to initialize DNS config for %s: %w",
+							globalDomainNames, err))
+					}
+				}
+			}
+		}
+	}
+
+	// Bucket federation is 'true' only when IAM assets are not namespaced
+	// per tenant and all tenants interested in globally available users
+	// if namespace was requested such as specifying etcdPathPrefix then
+	// we assume that users are interested in global bucket support
+	// but not federation.
+	globalBucketFederation = etcdCfg.PathPrefix == "" && etcdCfg.Enabled
 
 	globalServerRegion, err = config.LookupRegion(s[config.RegionSubSys][config.Default])
 	if err != nil {

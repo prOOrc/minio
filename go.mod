@@ -59,7 +59,7 @@ require (
 	github.com/philhofer/fwd v1.1.1
 	github.com/pierrec/lz4 v2.5.2+incompatible
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus/client_golang v1.11.0
+	github.com/prometheus/client_golang v1.11.1
 	github.com/prometheus/client_model v0.2.0
 	github.com/prometheus/procfs v0.11.0
 	github.com/rjeczalik/notify v0.9.2
@@ -77,6 +77,8 @@ require (
 	github.com/willf/bloom v2.0.3+incompatible
 	github.com/xdg/scram v0.0.0-20180814205039-7eeb5667e42c
 	github.com/xdg/stringprep v1.0.0 // indirect
+	go.etcd.io/etcd v0.0.0-20201125193152-8a03d2e9614b
+	go.uber.org/zap v1.10.0
 	golang.org/x/crypto v0.11.0
 	golang.org/x/net v0.10.0
 	golang.org/x/sys v0.10.0
