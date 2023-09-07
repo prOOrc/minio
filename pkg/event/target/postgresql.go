@@ -66,7 +66,7 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/lib/pq" // Register postgres driver
+	_ "github.com/jackc/pgx/v5/stdlib" // Register postgres driver
 
 	"github.com/minio/minio/pkg/event"
 	xnet "github.com/minio/minio/pkg/net"
@@ -74,11 +74,11 @@ import (
 
 const (
 	psqlTableExists          = `SELECT 1 FROM %s;`
-	psqlCreateNamespaceTable = `CREATE TABLE %s (key VARCHAR PRIMARY KEY, value JSONB);`
+	psqlCreateNamespaceTable = `CREATE TABLE %s (KEY VARCHAR PRIMARY KEY, VALUE JSONB);`
 	psqlCreateAccessTable    = `CREATE TABLE %s (event_time TIMESTAMP WITH TIME ZONE NOT NULL, event_data JSONB);`
 
-	psqlUpdateRow = `INSERT INTO %s (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;`
-	psqlDeleteRow = `DELETE FROM %s WHERE key = $1;`
+	psqlUpdateRow = `INSERT INTO %s (KEY, VALUE) VALUES ($1, $2) ON CONFLICT (KEY) DO UPDATE SET VALUE = EXCLUDED.value;`
+	psqlDeleteRow = `DELETE FROM %s WHERE KEY = $1;`
 	psqlInsertRow = `INSERT INTO %s (event_time, event_data) VALUES ($1, $2);`
 )
 

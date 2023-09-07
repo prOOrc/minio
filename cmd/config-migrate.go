@@ -461,14 +461,10 @@ func migrateV5ToV6() error {
 	}
 
 	if cv5.Logger.Redis.Addr != "" {
-		var addr *xnet.Host
-		if addr, err = xnet.ParseHost(cv5.Logger.Redis.Addr); err != nil {
-			return err
-		}
 		srvConfig.Notify.Redis = map[string]target.RedisArgs{
 			"1": {
 				Enable:   cv5.Logger.Redis.Enable,
-				Addr:     *addr,
+				Addr:     cv5.Logger.Redis.Addr,
 				Password: cv5.Logger.Redis.Password,
 				Key:      cv5.Logger.Redis.Key,
 			},

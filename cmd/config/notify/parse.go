@@ -1363,7 +1363,7 @@ func GetNotifyRedis(redisKVS map[string]config.KVS) (map[string]target.RedisArgs
 		if k != config.Default {
 			addressEnv = addressEnv + config.Default + k
 		}
-		addr, err := xnet.ParseHost(env.Get(addressEnv, kv.Get(target.RedisAddress)))
+		addr := env.Get(addressEnv, kv.Get(target.RedisAddress))
 		if err != nil {
 			return nil, err
 		}
@@ -1394,7 +1394,7 @@ func GetNotifyRedis(redisKVS map[string]config.KVS) (map[string]target.RedisArgs
 		redisArgs := target.RedisArgs{
 			Enable:     enabled,
 			Format:     env.Get(formatEnv, kv.Get(target.RedisFormat)),
-			Addr:       *addr,
+			Addr:       addr,
 			Password:   env.Get(passwordEnv, kv.Get(target.RedisPassword)),
 			Key:        env.Get(keyEnv, kv.Get(target.RedisKey)),
 			QueueDir:   env.Get(queueDirEnv, kv.Get(target.RedisQueueDir)),
