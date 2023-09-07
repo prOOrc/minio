@@ -43,7 +43,7 @@ func SetNotifyRedis(s config.Config, redisName string, cfg target.RedisArgs) err
 		},
 		config.KV{
 			Key:   target.RedisAddress,
-			Value: cfg.Addr.String(),
+			Value: cfg.Addr,
 		},
 		config.KV{
 			Key:   target.RedisPassword,

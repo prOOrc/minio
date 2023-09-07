@@ -25,11 +25,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
-	"github.com/gomodule/redigo/redis"
 	"github.com/minio/minio/pkg/event"
-	xnet "github.com/minio/minio/pkg/net"
+	"github.com/redis/go-redis/v9"
 )
 
 // Redis constants
@@ -52,13 +50,13 @@ const (
 
 // RedisArgs - Redis target arguments.
 type RedisArgs struct {
-	Enable     bool      `json:"enable"`
-	Format     string    `json:"format"`
-	Addr       xnet.Host `json:"address"`
-	Password   string    `json:"password"`
-	Key        string    `json:"key"`
-	QueueDir   string    `json:"queueDir"`
-	QueueLimit uint64    `json:"queueLimit"`
+	Enable     bool   `json:"enable"`
+	Format     string `json:"format"`
+	Addr       string `json:"address"`
+	Password   string `json:"password"`
+	Key        string `json:"key"`
+	QueueDir   string `json:"queueDir"`
+	QueueLimit uint64 `json:"queueLimit"`
 }
 
 // RedisAccessEvent holds event log data and timestamp
@@ -93,8 +91,8 @@ func (r RedisArgs) Validate() error {
 	return nil
 }
 
-func (r RedisArgs) validateFormat(c redis.Conn) error {
-	typeAvailable, err := redis.String(c.Do("TYPE", r.Key))
+func (r RedisArgs) validateFormat(c *redis.Client) error {
+	typeAvailable, err := c.Type(context.Background(), r.Key).Result()
 	if err != nil {
 		return err
 	}
@@ -117,7 +115,7 @@ func (r RedisArgs) validateFormat(c redis.Conn) error {
 type RedisTarget struct {
 	id         event.TargetID
 	args       RedisArgs
-	pool       *redis.Pool
+	rdc        *redis.Client
 	store      Store
 	firstPing  bool
 	loggerOnce func(ctx context.Context, err error, id interface{}, errKind ...interface{})
@@ -135,13 +133,11 @@ func (target *RedisTarget) HasQueueStore() bool {
 
 // IsActive - Return true if target is up and active
 func (target *RedisTarget) IsActive() (bool, error) {
-	conn := target.pool.Get()
 	defer func() {
-		cErr := conn.Close()
-		target.loggerOnce(context.Background(), cErr, target.ID())
+		target.loggerOnce(context.Background(), nil, target.ID())
 	}()
-	_, pingErr := conn.Do("PING")
-	if pingErr != nil {
+
+	if pingErr := target.rdc.Ping(context.Background()).Err(); pingErr != nil {
 		if IsConnRefusedErr(pingErr) {
 			return false, errNotConnected
 		}
@@ -164,12 +160,11 @@ func (target *RedisTarget) Save(eventData event.Event) error {
 
 // send - sends an event to the redis.
 func (target *RedisTarget) send(eventData event.Event) error {
-	conn := target.pool.Get()
 	defer func() {
-		cErr := conn.Close()
-		target.loggerOnce(context.Background(), cErr, target.ID())
+		target.loggerOnce(context.Background(), nil, target.ID())
 	}()
 
+	rdc := target.rdc
 	if target.args.Format == event.NamespaceFormat {
 		objectName, err := url.QueryUnescape(eventData.S3.Object.Key)
 		if err != nil {
@@ -178,14 +173,13 @@ func (target *RedisTarget) send(eventData event.Event) error {
 		key := eventData.S3.Bucket.Name + "/" + objectName
 
 		if eventData.EventName == event.ObjectRemovedDelete {
-			_, err = conn.Do("HDEL", target.args.Key, key)
+			err = rdc.HDel(context.Background(), target.args.Key, key).Err()
 		} else {
 			var data []byte
 			if data, err = json.Marshal(struct{ Records []event.Event }{[]event.Event{eventData}}); err != nil {
 				return err
 			}
-
-			_, err = conn.Do("HSET", target.args.Key, key, data)
+			err = rdc.HSet(context.Background(), target.args.Key, key, data).Err()
 		}
 		if err != nil {
 			return err
@@ -197,7 +191,7 @@ func (target *RedisTarget) send(eventData event.Event) error {
 		if err != nil {
 			return err
 		}
-		if _, err := conn.Do("RPUSH", target.args.Key, data); err != nil {
+		if _, err := rdc.RPush(context.Background(), target.args.Key, data).Result(); err != nil {
 			return err
 		}
 	}
@@ -207,13 +201,11 @@ func (target *RedisTarget) send(eventData event.Event) error {
 
 // Send - reads an event from store and sends it to redis.
 func (target *RedisTarget) Send(eventKey string) error {
-	conn := target.pool.Get()
 	defer func() {
-		cErr := conn.Close()
-		target.loggerOnce(context.Background(), cErr, target.ID())
+		target.loggerOnce(context.Background(), nil, target.ID())
 	}()
-	_, pingErr := conn.Do("PING")
-	if pingErr != nil {
+
+	if pingErr := target.rdc.Ping(context.Background()).Err(); pingErr != nil {
 		if IsConnRefusedErr(pingErr) {
 			return errNotConnected
 		}
@@ -221,7 +213,7 @@ func (target *RedisTarget) Send(eventKey string) error {
 	}
 
 	if !target.firstPing {
-		if err := target.args.validateFormat(conn); err != nil {
+		if err := target.args.validateFormat(target.rdc); err != nil {
 			if IsConnRefusedErr(err) {
 				return errNotConnected
 			}
@@ -253,51 +245,30 @@ func (target *RedisTarget) Send(eventKey string) error {
 
 // Close - releases the resources used by the pool.
 func (target *RedisTarget) Close() error {
-	return target.pool.Close()
+	return target.rdc.Close()
 }
 
 // NewRedisTarget - creates new Redis target.
 func NewRedisTarget(id string, args RedisArgs, doneCh <-chan struct{}, loggerOnce func(ctx context.Context, err error, id interface{}, errKind ...interface{}), test bool) (*RedisTarget, error) {
-	pool := &redis.Pool{
-		MaxIdle:     3,
-		IdleTimeout: 2 * 60 * time.Second,
-		Dial: func() (redis.Conn, error) {
-			conn, err := redis.Dial("tcp", args.Addr.String())
-			if err != nil {
-				return nil, err
-			}
-
-			if args.Password != "" {
-				if _, err = conn.Do("AUTH", args.Password); err != nil {
-					cErr := conn.Close()
-					targetID := event.TargetID{ID: id, Name: "redis"}
-					loggerOnce(context.Background(), cErr, targetID)
-					return nil, err
-				}
-			}
-
-			// Must be done after AUTH
-			if _, err = conn.Do("CLIENT", "SETNAME", "MinIO"); err != nil {
-				cErr := conn.Close()
-				targetID := event.TargetID{ID: id, Name: "redis"}
-				loggerOnce(context.Background(), cErr, targetID)
-				return nil, err
-			}
-
-			return conn, nil
-		},
-		TestOnBorrow: func(c redis.Conn, t time.Time) error {
-			_, err := c.Do("PING")
-			return err
-		},
+	var addr string
+	if !strings.HasPrefix(args.Addr, "redis://") {
+		addr = "redis://" + args.Addr
+	}
+	opt, err := redis.ParseURL(addr)
+	if err != nil {
+		return nil, err
+	}
+	if args.Password != "" {
+		opt.Password = args.Password
 	}
 
+	rdc := redis.NewClient(opt)
 	var store Store
 
 	target := &RedisTarget{
 		id:         event.TargetID{ID: id, Name: "redis"},
 		args:       args,
-		pool:       pool,
+		rdc:        rdc,
 		loggerOnce: loggerOnce,
 	}
 
@@ -311,20 +282,17 @@ func NewRedisTarget(id string, args RedisArgs, doneCh <-chan struct{}, loggerOnc
 		target.store = store
 	}
 
-	conn := target.pool.Get()
 	defer func() {
-		cErr := conn.Close()
-		target.loggerOnce(context.Background(), cErr, target.ID())
+		target.loggerOnce(context.Background(), nil, target.ID())
 	}()
 
-	_, pingErr := conn.Do("PING")
-	if pingErr != nil {
+	if pingErr := rdc.Ping(context.Background()).Err(); pingErr != nil {
 		if target.store == nil || !(IsConnRefusedErr(pingErr) || IsConnResetErr(pingErr)) {
 			target.loggerOnce(context.Background(), pingErr, target.ID())
 			return target, pingErr
 		}
 	} else {
-		if err := target.args.validateFormat(conn); err != nil {
+		if err := target.args.validateFormat(rdc); err != nil {
 			target.loggerOnce(context.Background(), err, target.ID())
 			return target, err
 		}
