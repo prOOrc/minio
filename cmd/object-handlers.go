@@ -894,7 +894,7 @@ func (api objectAPIHandlers) CopyObjectHandler(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	if vid != "" && vid != nullVersionID {
+	if vid != "" && vid != NullVersionID {
 		_, err := uuid.Parse(vid)
 		if err != nil {
 			writeErrorResponse(ctx, w, toAPIError(ctx, VersionNotFound{
@@ -1848,7 +1848,7 @@ func (api objectAPIHandlers) CopyObjectPartHandler(w http.ResponseWriter, r *htt
 		return
 	}
 
-	if vid != "" && vid != nullVersionID {
+	if vid != "" && vid != NullVersionID {
 		_, err := uuid.Parse(vid)
 		if err != nil {
 			writeErrorResponse(ctx, w, toAPIError(ctx, VersionNotFound{

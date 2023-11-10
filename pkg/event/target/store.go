@@ -29,6 +29,8 @@ import (
 
 const retryInterval = 3 * time.Second
 
+const storePrefix = "minio"
+
 // errNotConnected - indicates that the target connection is not active.
 var errNotConnected = errors.New("not connected to target server/service")
 

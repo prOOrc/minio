@@ -795,7 +795,7 @@ func (h *healSequence) healFromSourceCh() {
 func (h *healSequence) healDiskMeta(objAPI ObjectLayer) error {
 	// Try to pro-actively heal backend-encrypted file.
 	if err := h.queueHealTask(healSource{
-		bucket: minioMetaBucket,
+		bucket: MinioMetaBucket,
 		object: backendEncryptedFile,
 	}, madmin.HealItemBucketMetadata); err != nil {
 		if !isErrObjectNotFound(err) && !isErrVersionNotFound(err) {
@@ -836,7 +836,7 @@ func (h *healSequence) healMinioSysMeta(objAPI ObjectLayer, metaPrefix string) f
 		// NOTE: Healing on meta is run regardless
 		// of any bucket being selected, this is to ensure that
 		// meta are always upto date and correct.
-		return objAPI.HealObjects(h.ctx, minioMetaBucket, metaPrefix, h.settings, func(bucket, object, versionID string) error {
+		return objAPI.HealObjects(h.ctx, MinioMetaBucket, metaPrefix, h.settings, func(bucket, object, versionID string) error {
 			if h.isQuitting() {
 				return errHealStopSignalled
 			}

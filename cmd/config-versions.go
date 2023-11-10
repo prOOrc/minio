@@ -30,17 +30,18 @@ import (
 	"github.com/minio/minio/cmd/crypto"
 	"github.com/minio/minio/cmd/logger"
 	"github.com/minio/minio/pkg/auth"
+	"github.com/minio/minio/pkg/event/target"
 	"github.com/minio/minio/pkg/quick"
 )
 
-/////////////////// Config V1 ///////////////////
+// ///////////////// Config V1 ///////////////////
 type configV1 struct {
 	Version   string `json:"version"`
 	AccessKey string `json:"accessKeyId"`
 	SecretKey string `json:"secretAccessKey"`
 }
 
-/////////////////// Config V2 ///////////////////
+// ///////////////// Config V2 ///////////////////
 type configV2 struct {
 	Version     string `json:"version"`
 	Credentials struct {
@@ -62,7 +63,7 @@ type configV2 struct {
 	} `json:"fileLogger"`
 }
 
-/////////////////// Config V3 ///////////////////
+// ///////////////// Config V3 ///////////////////
 // backendV3 type.
 type backendV3 struct {
 	Type  string   `json:"type"`
@@ -237,11 +238,16 @@ type configV6 struct {
 // Notifier represents collection of supported notification queues in version
 // 1 without NATS streaming.
 type notifierV1 struct {
+	NATS       map[string]natsNotifyV1          `json:"nats"`
+	Redis      map[string]target.RedisArgs      `json:"redis"`
+	PostgreSQL map[string]target.PostgreSQLArgs `json:"postgresql"`
 }
 
 // Notifier represents collection of supported notification queues in version 2
 // with NATS streaming but without webhook.
 type notifierV2 struct {
+	Redis      map[string]target.RedisArgs      `json:"redis"`
+	PostgreSQL map[string]target.PostgreSQLArgs `json:"postgresql"`
 }
 
 // configV7 server configuration version '7'.
@@ -359,6 +365,10 @@ type serverConfigV12 struct {
 }
 
 type notifierV3 struct {
+	MySQL      map[string]target.MySQLArgs      `json:"mysql"`
+	PostgreSQL map[string]target.PostgreSQLArgs `json:"postgresql"`
+	Redis      map[string]target.RedisArgs      `json:"redis"`
+	Webhook    map[string]target.WebhookArgs    `json:"webhook"`
 }
 
 // serverConfigV13 server configuration version '13' which is like

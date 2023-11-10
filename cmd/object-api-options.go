@@ -93,7 +93,7 @@ func getOpts(ctx context.Context, r *http.Request, bucket, object string) (Objec
 	}
 
 	vid := strings.TrimSpace(r.URL.Query().Get(xhttp.VersionID))
-	if vid != "" && vid != nullVersionID {
+	if vid != "" && vid != NullVersionID {
 		_, err := uuid.Parse(vid)
 		if err != nil {
 			logger.LogIf(ctx, err)
@@ -209,7 +209,7 @@ func delOpts(ctx context.Context, r *http.Request, bucket, object string) (opts 
 func putOpts(ctx context.Context, r *http.Request, bucket, object string, metadata map[string]string) (opts ObjectOptions, err error) {
 	versioned := globalBucketVersioningSys.Enabled(bucket)
 	vid := strings.TrimSpace(r.URL.Query().Get(xhttp.VersionID))
-	if vid != "" && vid != nullVersionID {
+	if vid != "" && vid != NullVersionID {
 		_, err := uuid.Parse(vid)
 		if err != nil {
 			logger.LogIf(ctx, err)

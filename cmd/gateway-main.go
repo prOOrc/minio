@@ -47,7 +47,7 @@ var (
 // GatewayLocker implements custom NewNSLock implementation
 type GatewayLocker struct {
 	ObjectLayer
-	nsMutex *nsLockMap
+	nsMutex *NsLockMap
 }
 
 // NewNSLock - implements gateway level locker
@@ -99,7 +99,7 @@ func (l *GatewayLocker) Walk(ctx context.Context, bucket, prefix string, results
 
 // NewGatewayLayerWithLocker - initialize gateway with locker.
 func NewGatewayLayerWithLocker(gwLayer ObjectLayer) ObjectLayer {
-	return &GatewayLocker{ObjectLayer: gwLayer, nsMutex: newNSLock(false)}
+	return &GatewayLocker{ObjectLayer: gwLayer, nsMutex: NewNSLock(false)}
 }
 
 // RegisterGatewayCommand registers a new command for gateway.

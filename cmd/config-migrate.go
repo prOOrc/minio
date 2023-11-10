@@ -31,11 +31,14 @@ import (
 	"github.com/minio/minio/cmd/config/compress"
 	xldap "github.com/minio/minio/cmd/config/identity/ldap"
 	"github.com/minio/minio/cmd/config/identity/openid"
+	"github.com/minio/minio/cmd/config/notify"
 	"github.com/minio/minio/cmd/config/policy/opa"
 	"github.com/minio/minio/cmd/config/storageclass"
 	"github.com/minio/minio/cmd/crypto"
 	"github.com/minio/minio/cmd/logger"
 	"github.com/minio/minio/pkg/auth"
+	"github.com/minio/minio/pkg/event"
+	"github.com/minio/minio/pkg/event/target"
 	"github.com/minio/minio/pkg/madmin"
 	xnet "github.com/minio/minio/pkg/net"
 	"github.com/minio/minio/pkg/quick"
@@ -421,6 +424,16 @@ func migrateV5ToV6() error {
 	srvConfig.Logger.File = cv5.Logger.File
 	srvConfig.Logger.Syslog = cv5.Logger.Syslog
 
+	if cv5.Logger.Redis.Addr != "" {
+		srvConfig.Notify.Redis = map[string]target.RedisArgs{
+			"1": {
+				Enable:   cv5.Logger.Redis.Enable,
+				Addr:     cv5.Logger.Redis.Addr,
+				Password: cv5.Logger.Redis.Password,
+				Key:      cv5.Logger.Redis.Key,
+			},
+		}
+	}
 
 	if err = Save(configFile, srvConfig); err != nil {
 		return fmt.Errorf("Failed to migrate config from ‘%s’ to ‘%s’. %w", cv5.Version, srvConfig.Version, err)
@@ -459,6 +472,12 @@ func migrateV6ToV7() error {
 	srvConfig.Logger.Console = cv6.Logger.Console
 	srvConfig.Logger.File = cv6.Logger.File
 	srvConfig.Logger.Syslog = cv6.Logger.Syslog
+	srvConfig.Notify.Redis = make(map[string]target.RedisArgs)
+	if len(cv6.Notify.Redis) == 0 {
+		srvConfig.Notify.Redis["1"] = target.RedisArgs{}
+	} else {
+		srvConfig.Notify.Redis = cv6.Notify.Redis
+	}
 
 	if err = Save(configFile, srvConfig); err != nil {
 		return fmt.Errorf("Failed to migrate config from ‘%s’ to ‘%s’. %w", cv6.Version, srvConfig.Version, err)
@@ -497,6 +516,19 @@ func migrateV7ToV8() error {
 	srvConfig.Logger.Console = cv7.Logger.Console
 	srvConfig.Logger.File = cv7.Logger.File
 	srvConfig.Logger.Syslog = cv7.Logger.Syslog
+	srvConfig.Notify.NATS = make(map[string]natsNotifyV1)
+	srvConfig.Notify.Redis = make(map[string]target.RedisArgs)
+	srvConfig.Notify.PostgreSQL = make(map[string]target.PostgreSQLArgs)
+	if len(cv7.Notify.NATS) == 0 {
+		srvConfig.Notify.NATS["1"] = natsNotifyV1{}
+	} else {
+		srvConfig.Notify.NATS = cv7.Notify.NATS
+	}
+	if len(cv7.Notify.Redis) == 0 {
+		srvConfig.Notify.Redis["1"] = target.RedisArgs{}
+	} else {
+		srvConfig.Notify.Redis = cv7.Notify.Redis
+	}
 
 	if err = Save(configFile, srvConfig); err != nil {
 		return fmt.Errorf("Failed to migrate config from ‘%s’ to ‘%s’. %w", cv7.Version, srvConfig.Version, err)
@@ -536,7 +568,27 @@ func migrateV8ToV9() error {
 	srvConfig.Logger.File = cv8.Logger.File
 	srvConfig.Logger.Syslog = cv8.Logger.Syslog
 
-		if err = Save(configFile, srvConfig); err != nil {
+	// check and set notifiers config
+	if len(cv8.Notify.NATS) == 0 {
+		srvConfig.Notify.NATS = make(map[string]natsNotifyV1)
+		srvConfig.Notify.NATS["1"] = natsNotifyV1{}
+	} else {
+		srvConfig.Notify.NATS = cv8.Notify.NATS
+	}
+	if len(cv8.Notify.Redis) == 0 {
+		srvConfig.Notify.Redis = make(map[string]target.RedisArgs)
+		srvConfig.Notify.Redis["1"] = target.RedisArgs{}
+	} else {
+		srvConfig.Notify.Redis = cv8.Notify.Redis
+	}
+	if len(cv8.Notify.PostgreSQL) == 0 {
+		srvConfig.Notify.PostgreSQL = make(map[string]target.PostgreSQLArgs)
+		srvConfig.Notify.PostgreSQL["1"] = target.PostgreSQLArgs{}
+	} else {
+		srvConfig.Notify.PostgreSQL = cv8.Notify.PostgreSQL
+	}
+
+	if err = Save(configFile, srvConfig); err != nil {
 		return fmt.Errorf("Failed to migrate config from ‘%s’ to ‘%s’. %w", cv8.Version, srvConfig.Version, err)
 	}
 
@@ -572,7 +624,24 @@ func migrateV9ToV10() error {
 	srvConfig.Logger.Console = cv9.Logger.Console
 	srvConfig.Logger.File = cv9.Logger.File
 
-
+	if len(cv9.Notify.NATS) == 0 {
+		srvConfig.Notify.NATS = make(map[string]natsNotifyV1)
+		srvConfig.Notify.NATS["1"] = natsNotifyV1{}
+	} else {
+		srvConfig.Notify.NATS = cv9.Notify.NATS
+	}
+	if len(cv9.Notify.Redis) == 0 {
+		srvConfig.Notify.Redis = make(map[string]target.RedisArgs)
+		srvConfig.Notify.Redis["1"] = target.RedisArgs{}
+	} else {
+		srvConfig.Notify.Redis = cv9.Notify.Redis
+	}
+	if len(cv9.Notify.PostgreSQL) == 0 {
+		srvConfig.Notify.PostgreSQL = make(map[string]target.PostgreSQLArgs)
+		srvConfig.Notify.PostgreSQL["1"] = target.PostgreSQLArgs{}
+	} else {
+		srvConfig.Notify.PostgreSQL = cv9.Notify.PostgreSQL
+	}
 
 	if err = Save(configFile, srvConfig); err != nil {
 		return fmt.Errorf("Failed to migrate config from ‘%s’ to ‘%s’. %w", cv9.Version, srvConfig.Version, err)
@@ -610,6 +679,25 @@ func migrateV10ToV11() error {
 	srvConfig.Logger.Console = cv10.Logger.Console
 	srvConfig.Logger.File = cv10.Logger.File
 
+	if len(cv10.Notify.NATS) == 0 {
+		srvConfig.Notify.NATS = make(map[string]natsNotifyV1)
+		srvConfig.Notify.NATS["1"] = natsNotifyV1{}
+	} else {
+		srvConfig.Notify.NATS = cv10.Notify.NATS
+	}
+	if len(cv10.Notify.Redis) == 0 {
+		srvConfig.Notify.Redis = make(map[string]target.RedisArgs)
+		srvConfig.Notify.Redis["1"] = target.RedisArgs{}
+	} else {
+		srvConfig.Notify.Redis = cv10.Notify.Redis
+	}
+	if len(cv10.Notify.PostgreSQL) == 0 {
+		srvConfig.Notify.PostgreSQL = make(map[string]target.PostgreSQLArgs)
+		srvConfig.Notify.PostgreSQL["1"] = target.PostgreSQLArgs{}
+	} else {
+		srvConfig.Notify.PostgreSQL = cv10.Notify.PostgreSQL
+	}
+
 	if err = Save(configFile, srvConfig); err != nil {
 		return fmt.Errorf("Failed to migrate config from ‘%s’ to ‘%s’. %w", cv10.Version, srvConfig.Version, err)
 	}
@@ -646,6 +734,18 @@ func migrateV11ToV12() error {
 	srvConfig.Logger.Console = cv11.Logger.Console
 	srvConfig.Logger.File = cv11.Logger.File
 
+	if len(cv11.Notify.Redis) == 0 {
+		srvConfig.Notify.Redis = make(map[string]target.RedisArgs)
+		srvConfig.Notify.Redis["1"] = target.RedisArgs{}
+	} else {
+		srvConfig.Notify.Redis = cv11.Notify.Redis
+	}
+	if len(cv11.Notify.PostgreSQL) == 0 {
+		srvConfig.Notify.PostgreSQL = make(map[string]target.PostgreSQLArgs)
+		srvConfig.Notify.PostgreSQL["1"] = target.PostgreSQLArgs{}
+	} else {
+		srvConfig.Notify.PostgreSQL = cv11.Notify.PostgreSQL
+	}
 
 	if err = Save(configFile, srvConfig); err != nil {
 		return fmt.Errorf("Failed to migrate config from ‘%s’ to ‘%s’. %w", cv11.Version, srvConfig.Version, err)
@@ -685,6 +785,23 @@ func migrateV12ToV13() error {
 	srvConfig.Logger.Console = cv12.Logger.Console
 	srvConfig.Logger.File = cv12.Logger.File
 
+	if len(cv12.Notify.Redis) == 0 {
+		srvConfig.Notify.Redis = make(map[string]target.RedisArgs)
+		srvConfig.Notify.Redis["1"] = target.RedisArgs{}
+	} else {
+		srvConfig.Notify.Redis = cv12.Notify.Redis
+	}
+	if len(cv12.Notify.PostgreSQL) == 0 {
+		srvConfig.Notify.PostgreSQL = make(map[string]target.PostgreSQLArgs)
+		srvConfig.Notify.PostgreSQL["1"] = target.PostgreSQLArgs{}
+	} else {
+		srvConfig.Notify.PostgreSQL = cv12.Notify.PostgreSQL
+	}
+
+	// V12 will not have a webhook config. So we initialize one here.
+	srvConfig.Notify.Webhook = make(map[string]target.WebhookArgs)
+	srvConfig.Notify.Webhook["1"] = target.WebhookArgs{}
+
 	if err = Save(configFile, srvConfig); err != nil {
 		return fmt.Errorf("Failed to migrate config from ‘%s’ to ‘%s’. %w", cv12.Version, srvConfig.Version, err)
 	}
@@ -723,7 +840,25 @@ func migrateV13ToV14() error {
 	srvConfig.Logger.Console = cv13.Logger.Console
 	srvConfig.Logger.File = cv13.Logger.File
 
-	
+	if len(cv13.Notify.Redis) == 0 {
+		srvConfig.Notify.Redis = make(map[string]target.RedisArgs)
+		srvConfig.Notify.Redis["1"] = target.RedisArgs{}
+	} else {
+		srvConfig.Notify.Redis = cv13.Notify.Redis
+	}
+	if len(cv13.Notify.PostgreSQL) == 0 {
+		srvConfig.Notify.PostgreSQL = make(map[string]target.PostgreSQLArgs)
+		srvConfig.Notify.PostgreSQL["1"] = target.PostgreSQLArgs{}
+	} else {
+		srvConfig.Notify.PostgreSQL = cv13.Notify.PostgreSQL
+	}
+	if len(cv13.Notify.Webhook) == 0 {
+		srvConfig.Notify.Webhook = make(map[string]target.WebhookArgs)
+		srvConfig.Notify.Webhook["1"] = target.WebhookArgs{}
+	} else {
+		srvConfig.Notify.Webhook = cv13.Notify.Webhook
+	}
+
 	// Set the new browser parameter to true by default
 	srvConfig.Browser = true
 
@@ -765,6 +900,29 @@ func migrateV14ToV15() error {
 	srvConfig.Logger.Console = cv14.Logger.Console
 	srvConfig.Logger.File = cv14.Logger.File
 
+	if len(cv14.Notify.Redis) == 0 {
+		srvConfig.Notify.Redis = make(map[string]target.RedisArgs)
+		srvConfig.Notify.Redis["1"] = target.RedisArgs{}
+	} else {
+		srvConfig.Notify.Redis = cv14.Notify.Redis
+	}
+	if len(cv14.Notify.PostgreSQL) == 0 {
+		srvConfig.Notify.PostgreSQL = make(map[string]target.PostgreSQLArgs)
+		srvConfig.Notify.PostgreSQL["1"] = target.PostgreSQLArgs{}
+	} else {
+		srvConfig.Notify.PostgreSQL = cv14.Notify.PostgreSQL
+	}
+	if len(cv14.Notify.Webhook) == 0 {
+		srvConfig.Notify.Webhook = make(map[string]target.WebhookArgs)
+		srvConfig.Notify.Webhook["1"] = target.WebhookArgs{}
+	} else {
+		srvConfig.Notify.Webhook = cv14.Notify.Webhook
+	}
+
+	// V14 will not have mysql support, so we add that here.
+	srvConfig.Notify.MySQL = make(map[string]target.MySQLArgs)
+	srvConfig.Notify.MySQL["1"] = target.MySQLArgs{}
+
 	// Load browser config from existing config in the file.
 	srvConfig.Browser = cv14.Browser
 
@@ -805,6 +963,30 @@ func migrateV15ToV16() error {
 		srvConfig.Region = globalMinioDefaultRegion
 	}
 
+	if len(cv15.Notify.Redis) == 0 {
+		srvConfig.Notify.Redis = make(map[string]target.RedisArgs)
+		srvConfig.Notify.Redis["1"] = target.RedisArgs{}
+	} else {
+		srvConfig.Notify.Redis = cv15.Notify.Redis
+	}
+	if len(cv15.Notify.PostgreSQL) == 0 {
+		srvConfig.Notify.PostgreSQL = make(map[string]target.PostgreSQLArgs)
+		srvConfig.Notify.PostgreSQL["1"] = target.PostgreSQLArgs{}
+	} else {
+		srvConfig.Notify.PostgreSQL = cv15.Notify.PostgreSQL
+	}
+	if len(cv15.Notify.Webhook) == 0 {
+		srvConfig.Notify.Webhook = make(map[string]target.WebhookArgs)
+		srvConfig.Notify.Webhook["1"] = target.WebhookArgs{}
+	} else {
+		srvConfig.Notify.Webhook = cv15.Notify.Webhook
+	}
+	if len(cv15.Notify.MySQL) == 0 {
+		srvConfig.Notify.MySQL = make(map[string]target.MySQLArgs)
+		srvConfig.Notify.MySQL["1"] = target.MySQLArgs{}
+	} else {
+		srvConfig.Notify.MySQL = cv15.Notify.MySQL
+	}
 
 	// Load browser config from existing config in the file.
 	srvConfig.Browser = cv15.Browser
@@ -849,7 +1031,51 @@ func migrateV16ToV17() error {
 	srvConfig.Logger.Console = cv16.Logger.Console
 	srvConfig.Logger.File = cv16.Logger.File
 
-
+	if len(cv16.Notify.Redis) == 0 {
+		srvConfig.Notify.Redis = make(map[string]target.RedisArgs)
+		srvConfig.Notify.Redis["1"] = target.RedisArgs{}
+	} else {
+		// IMPORTANT NOTE: Future migrations should remove
+		// this as existing configuration will already contain
+		// a value for the "format" parameter.
+		srvConfig.Notify.Redis = cv16.Notify.Redis
+		for k, v := range srvConfig.Notify.Redis {
+			v.Format = event.NamespaceFormat
+			srvConfig.Notify.Redis[k] = v
+		}
+	}
+	if len(cv16.Notify.PostgreSQL) == 0 {
+		srvConfig.Notify.PostgreSQL = make(map[string]target.PostgreSQLArgs)
+		srvConfig.Notify.PostgreSQL["1"] = target.PostgreSQLArgs{}
+	} else {
+		// IMPORTANT NOTE: Future migrations should remove
+		// this as existing configuration will already contain
+		// a value for the "format" parameter.
+		srvConfig.Notify.PostgreSQL = cv16.Notify.PostgreSQL
+		for k, v := range srvConfig.Notify.PostgreSQL {
+			v.Format = event.NamespaceFormat
+			srvConfig.Notify.PostgreSQL[k] = v
+		}
+	}
+	if len(cv16.Notify.Webhook) == 0 {
+		srvConfig.Notify.Webhook = make(map[string]target.WebhookArgs)
+		srvConfig.Notify.Webhook["1"] = target.WebhookArgs{}
+	} else {
+		srvConfig.Notify.Webhook = cv16.Notify.Webhook
+	}
+	if len(cv16.Notify.MySQL) == 0 {
+		srvConfig.Notify.MySQL = make(map[string]target.MySQLArgs)
+		srvConfig.Notify.MySQL["1"] = target.MySQLArgs{}
+	} else {
+		// IMPORTANT NOTE: Future migrations should remove
+		// this as existing configuration will already contain
+		// a value for the "format" parameter.
+		srvConfig.Notify.MySQL = cv16.Notify.MySQL
+		for k, v := range srvConfig.Notify.MySQL {
+			v.Format = event.NamespaceFormat
+			srvConfig.Notify.MySQL[k] = v
+		}
+	}
 
 	// Load browser config from existing config in the file.
 	srvConfig.Browser = cv16.Browser
@@ -894,6 +1120,37 @@ func migrateV17ToV18() error {
 	srvConfig.Logger.Console = cv17.Logger.Console
 	srvConfig.Logger.File = cv17.Logger.File
 
+	if len(cv17.Notify.Redis) == 0 {
+		srvConfig.Notify.Redis = make(map[string]target.RedisArgs)
+		srvConfig.Notify.Redis["1"] = target.RedisArgs{
+			Format: event.NamespaceFormat,
+		}
+	} else {
+		srvConfig.Notify.Redis = cv17.Notify.Redis
+	}
+	if len(cv17.Notify.PostgreSQL) == 0 {
+		srvConfig.Notify.PostgreSQL = make(map[string]target.PostgreSQLArgs)
+		srvConfig.Notify.PostgreSQL["1"] = target.PostgreSQLArgs{
+			Format: event.NamespaceFormat,
+		}
+	} else {
+		srvConfig.Notify.PostgreSQL = cv17.Notify.PostgreSQL
+	}
+
+	if len(cv17.Notify.Webhook) == 0 {
+		srvConfig.Notify.Webhook = make(map[string]target.WebhookArgs)
+		srvConfig.Notify.Webhook["1"] = target.WebhookArgs{}
+	} else {
+		srvConfig.Notify.Webhook = cv17.Notify.Webhook
+	}
+	if len(cv17.Notify.MySQL) == 0 {
+		srvConfig.Notify.MySQL = make(map[string]target.MySQLArgs)
+		srvConfig.Notify.MySQL["1"] = target.MySQLArgs{
+			Format: event.NamespaceFormat,
+		}
+	} else {
+		srvConfig.Notify.MySQL = cv17.Notify.MySQL
+	}
 
 	// Load browser config from existing config in the file.
 	srvConfig.Browser = cv17.Browser
@@ -936,6 +1193,37 @@ func migrateV18ToV19() error {
 	srvConfig.Logger.Console = cv18.Logger.Console
 	srvConfig.Logger.File = cv18.Logger.File
 
+	if len(cv18.Notify.Redis) == 0 {
+		srvConfig.Notify.Redis = make(map[string]target.RedisArgs)
+		srvConfig.Notify.Redis["1"] = target.RedisArgs{
+			Format: event.NamespaceFormat,
+		}
+	} else {
+		srvConfig.Notify.Redis = cv18.Notify.Redis
+	}
+	if len(cv18.Notify.PostgreSQL) == 0 {
+		srvConfig.Notify.PostgreSQL = make(map[string]target.PostgreSQLArgs)
+		srvConfig.Notify.PostgreSQL["1"] = target.PostgreSQLArgs{
+			Format: event.NamespaceFormat,
+		}
+	} else {
+		srvConfig.Notify.PostgreSQL = cv18.Notify.PostgreSQL
+	}
+
+	if len(cv18.Notify.Webhook) == 0 {
+		srvConfig.Notify.Webhook = make(map[string]target.WebhookArgs)
+		srvConfig.Notify.Webhook["1"] = target.WebhookArgs{}
+	} else {
+		srvConfig.Notify.Webhook = cv18.Notify.Webhook
+	}
+	if len(cv18.Notify.MySQL) == 0 {
+		srvConfig.Notify.MySQL = make(map[string]target.MySQLArgs)
+		srvConfig.Notify.MySQL["1"] = target.MySQLArgs{
+			Format: event.NamespaceFormat,
+		}
+	} else {
+		srvConfig.Notify.MySQL = cv18.Notify.MySQL
+	}
 
 	// Load browser config from existing config in the file.
 	srvConfig.Browser = cv18.Browser
@@ -978,6 +1266,37 @@ func migrateV19ToV20() error {
 	srvConfig.Logger.Console = cv19.Logger.Console
 	srvConfig.Logger.File = cv19.Logger.File
 
+	if len(cv19.Notify.Redis) == 0 {
+		srvConfig.Notify.Redis = make(map[string]target.RedisArgs)
+		srvConfig.Notify.Redis["1"] = target.RedisArgs{
+			Format: event.NamespaceFormat,
+		}
+	} else {
+		srvConfig.Notify.Redis = cv19.Notify.Redis
+	}
+	if len(cv19.Notify.PostgreSQL) == 0 {
+		srvConfig.Notify.PostgreSQL = make(map[string]target.PostgreSQLArgs)
+		srvConfig.Notify.PostgreSQL["1"] = target.PostgreSQLArgs{
+			Format: event.NamespaceFormat,
+		}
+	} else {
+		srvConfig.Notify.PostgreSQL = cv19.Notify.PostgreSQL
+	}
+	if len(cv19.Notify.Webhook) == 0 {
+		srvConfig.Notify.Webhook = make(map[string]target.WebhookArgs)
+		srvConfig.Notify.Webhook["1"] = target.WebhookArgs{}
+	} else {
+		srvConfig.Notify.Webhook = cv19.Notify.Webhook
+	}
+	if len(cv19.Notify.MySQL) == 0 {
+		srvConfig.Notify.MySQL = make(map[string]target.MySQLArgs)
+		srvConfig.Notify.MySQL["1"] = target.MySQLArgs{
+			Format: event.NamespaceFormat,
+		}
+	} else {
+		srvConfig.Notify.MySQL = cv19.Notify.MySQL
+	}
+
 	// Load browser config from existing config in the file.
 	srvConfig.Browser = cv19.Browser
 
@@ -1015,6 +1334,36 @@ func migrateV20ToV21() error {
 		srvConfig.Region = globalMinioDefaultRegion
 	}
 
+	if len(cv20.Notify.Redis) == 0 {
+		srvConfig.Notify.Redis = make(map[string]target.RedisArgs)
+		srvConfig.Notify.Redis["1"] = target.RedisArgs{
+			Format: event.NamespaceFormat,
+		}
+	} else {
+		srvConfig.Notify.Redis = cv20.Notify.Redis
+	}
+	if len(cv20.Notify.PostgreSQL) == 0 {
+		srvConfig.Notify.PostgreSQL = make(map[string]target.PostgreSQLArgs)
+		srvConfig.Notify.PostgreSQL["1"] = target.PostgreSQLArgs{
+			Format: event.NamespaceFormat,
+		}
+	} else {
+		srvConfig.Notify.PostgreSQL = cv20.Notify.PostgreSQL
+	}
+	if len(cv20.Notify.Webhook) == 0 {
+		srvConfig.Notify.Webhook = make(map[string]target.WebhookArgs)
+		srvConfig.Notify.Webhook["1"] = target.WebhookArgs{}
+	} else {
+		srvConfig.Notify.Webhook = cv20.Notify.Webhook
+	}
+	if len(cv20.Notify.MySQL) == 0 {
+		srvConfig.Notify.MySQL = make(map[string]target.MySQLArgs)
+		srvConfig.Notify.MySQL["1"] = target.MySQLArgs{
+			Format: event.NamespaceFormat,
+		}
+	} else {
+		srvConfig.Notify.MySQL = cv20.Notify.MySQL
+	}
 
 	// Load browser config from existing config in the file.
 	srvConfig.Browser = cv20.Browser
@@ -1056,7 +1405,37 @@ func migrateV21ToV22() error {
 		srvConfig.Region = globalMinioDefaultRegion
 	}
 
-	
+	if len(cv21.Notify.Redis) == 0 {
+		srvConfig.Notify.Redis = make(map[string]target.RedisArgs)
+		srvConfig.Notify.Redis["1"] = target.RedisArgs{
+			Format: event.NamespaceFormat,
+		}
+	} else {
+		srvConfig.Notify.Redis = cv21.Notify.Redis
+	}
+	if len(cv21.Notify.PostgreSQL) == 0 {
+		srvConfig.Notify.PostgreSQL = make(map[string]target.PostgreSQLArgs)
+		srvConfig.Notify.PostgreSQL["1"] = target.PostgreSQLArgs{
+			Format: event.NamespaceFormat,
+		}
+	} else {
+		srvConfig.Notify.PostgreSQL = cv21.Notify.PostgreSQL
+	}
+	if len(cv21.Notify.Webhook) == 0 {
+		srvConfig.Notify.Webhook = make(map[string]target.WebhookArgs)
+		srvConfig.Notify.Webhook["1"] = target.WebhookArgs{}
+	} else {
+		srvConfig.Notify.Webhook = cv21.Notify.Webhook
+	}
+	if len(cv21.Notify.MySQL) == 0 {
+		srvConfig.Notify.MySQL = make(map[string]target.MySQLArgs)
+		srvConfig.Notify.MySQL["1"] = target.MySQLArgs{
+			Format: event.NamespaceFormat,
+		}
+	} else {
+		srvConfig.Notify.MySQL = cv21.Notify.MySQL
+	}
+
 	// Load browser config from existing config in the file.
 	srvConfig.Browser = cv21.Browser
 
@@ -1095,6 +1474,37 @@ func migrateV22ToV23() error {
 	if srvConfig.Region == "" {
 		// Region needs to be set for AWS Signature Version 4.
 		srvConfig.Region = globalMinioDefaultRegion
+	}
+
+	if len(cv22.Notify.Redis) == 0 {
+		srvConfig.Notify.Redis = make(map[string]target.RedisArgs)
+		srvConfig.Notify.Redis["1"] = target.RedisArgs{
+			Format: event.NamespaceFormat,
+		}
+	} else {
+		srvConfig.Notify.Redis = cv22.Notify.Redis
+	}
+	if len(cv22.Notify.PostgreSQL) == 0 {
+		srvConfig.Notify.PostgreSQL = make(map[string]target.PostgreSQLArgs)
+		srvConfig.Notify.PostgreSQL["1"] = target.PostgreSQLArgs{
+			Format: event.NamespaceFormat,
+		}
+	} else {
+		srvConfig.Notify.PostgreSQL = cv22.Notify.PostgreSQL
+	}
+	if len(cv22.Notify.Webhook) == 0 {
+		srvConfig.Notify.Webhook = make(map[string]target.WebhookArgs)
+		srvConfig.Notify.Webhook["1"] = target.WebhookArgs{}
+	} else {
+		srvConfig.Notify.Webhook = cv22.Notify.Webhook
+	}
+	if len(cv22.Notify.MySQL) == 0 {
+		srvConfig.Notify.MySQL = make(map[string]target.MySQLArgs)
+		srvConfig.Notify.MySQL["1"] = target.MySQLArgs{
+			Format: event.NamespaceFormat,
+		}
+	} else {
+		srvConfig.Notify.MySQL = cv22.Notify.MySQL
 	}
 
 	// Load browser config from existing config in the file.
@@ -1146,6 +1556,36 @@ func migrateV23ToV24() error {
 		srvConfig.Region = globalMinioDefaultRegion
 	}
 
+	if len(cv23.Notify.Redis) == 0 {
+		srvConfig.Notify.Redis = make(map[string]target.RedisArgs)
+		srvConfig.Notify.Redis["1"] = target.RedisArgs{
+			Format: event.NamespaceFormat,
+		}
+	} else {
+		srvConfig.Notify.Redis = cv23.Notify.Redis
+	}
+	if len(cv23.Notify.PostgreSQL) == 0 {
+		srvConfig.Notify.PostgreSQL = make(map[string]target.PostgreSQLArgs)
+		srvConfig.Notify.PostgreSQL["1"] = target.PostgreSQLArgs{
+			Format: event.NamespaceFormat,
+		}
+	} else {
+		srvConfig.Notify.PostgreSQL = cv23.Notify.PostgreSQL
+	}
+	if len(cv23.Notify.Webhook) == 0 {
+		srvConfig.Notify.Webhook = make(map[string]target.WebhookArgs)
+		srvConfig.Notify.Webhook["1"] = target.WebhookArgs{}
+	} else {
+		srvConfig.Notify.Webhook = cv23.Notify.Webhook
+	}
+	if len(cv23.Notify.MySQL) == 0 {
+		srvConfig.Notify.MySQL = make(map[string]target.MySQLArgs)
+		srvConfig.Notify.MySQL["1"] = target.MySQLArgs{
+			Format: event.NamespaceFormat,
+		}
+	} else {
+		srvConfig.Notify.MySQL = cv23.Notify.MySQL
+	}
 
 	// Load browser config from existing config in the file.
 	srvConfig.Browser = cv23.Browser
@@ -1194,6 +1634,37 @@ func migrateV24ToV25() error {
 	if srvConfig.Region == "" {
 		// Region needs to be set for AWS Signature Version 4.
 		srvConfig.Region = globalMinioDefaultRegion
+	}
+
+	if len(cv24.Notify.Redis) == 0 {
+		srvConfig.Notify.Redis = make(map[string]target.RedisArgs)
+		srvConfig.Notify.Redis["1"] = target.RedisArgs{
+			Format: event.NamespaceFormat,
+		}
+	} else {
+		srvConfig.Notify.Redis = cv24.Notify.Redis
+	}
+	if len(cv24.Notify.PostgreSQL) == 0 {
+		srvConfig.Notify.PostgreSQL = make(map[string]target.PostgreSQLArgs)
+		srvConfig.Notify.PostgreSQL["1"] = target.PostgreSQLArgs{
+			Format: event.NamespaceFormat,
+		}
+	} else {
+		srvConfig.Notify.PostgreSQL = cv24.Notify.PostgreSQL
+	}
+	if len(cv24.Notify.Webhook) == 0 {
+		srvConfig.Notify.Webhook = make(map[string]target.WebhookArgs)
+		srvConfig.Notify.Webhook["1"] = target.WebhookArgs{}
+	} else {
+		srvConfig.Notify.Webhook = cv24.Notify.Webhook
+	}
+	if len(cv24.Notify.MySQL) == 0 {
+		srvConfig.Notify.MySQL = make(map[string]target.MySQLArgs)
+		srvConfig.Notify.MySQL["1"] = target.MySQLArgs{
+			Format: event.NamespaceFormat,
+		}
+	} else {
+		srvConfig.Notify.MySQL = cv24.Notify.MySQL
 	}
 
 	// Load browser config from existing config in the file.
@@ -1250,6 +1721,36 @@ func migrateV25ToV26() error {
 		srvConfig.Region = globalMinioDefaultRegion
 	}
 
+	if len(cv25.Notify.Redis) == 0 {
+		srvConfig.Notify.Redis = make(map[string]target.RedisArgs)
+		srvConfig.Notify.Redis["1"] = target.RedisArgs{
+			Format: event.NamespaceFormat,
+		}
+	} else {
+		srvConfig.Notify.Redis = cv25.Notify.Redis
+	}
+	if len(cv25.Notify.PostgreSQL) == 0 {
+		srvConfig.Notify.PostgreSQL = make(map[string]target.PostgreSQLArgs)
+		srvConfig.Notify.PostgreSQL["1"] = target.PostgreSQLArgs{
+			Format: event.NamespaceFormat,
+		}
+	} else {
+		srvConfig.Notify.PostgreSQL = cv25.Notify.PostgreSQL
+	}
+	if len(cv25.Notify.Webhook) == 0 {
+		srvConfig.Notify.Webhook = make(map[string]target.WebhookArgs)
+		srvConfig.Notify.Webhook["1"] = target.WebhookArgs{}
+	} else {
+		srvConfig.Notify.Webhook = cv25.Notify.Webhook
+	}
+	if len(cv25.Notify.MySQL) == 0 {
+		srvConfig.Notify.MySQL = make(map[string]target.MySQLArgs)
+		srvConfig.Notify.MySQL["1"] = target.MySQLArgs{
+			Format: event.NamespaceFormat,
+		}
+	} else {
+		srvConfig.Notify.MySQL = cv25.Notify.MySQL
+	}
 
 	// Load browser config from existing config in the file.
 	srvConfig.Browser = cv25.Browser
@@ -1663,6 +2164,15 @@ func migrateMinioSysConfigToKV(objAPI ObjectLayer) error {
 	cache.SetCacheConfig(newCfg, cfg.Cache)
 	compress.SetCompressionConfig(newCfg, cfg.Compression)
 
+	for k, args := range cfg.Notify.PostgreSQL {
+		notify.SetNotifyPostgres(newCfg, k, args)
+	}
+	for k, args := range cfg.Notify.Redis {
+		notify.SetNotifyRedis(newCfg, k, args)
+	}
+	for k, args := range cfg.Notify.Webhook {
+		notify.SetNotifyWebhook(newCfg, k, args)
+	}
 
 	if err = saveServerConfig(GlobalContext, objAPI, newCfg); err != nil {
 		return err

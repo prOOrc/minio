@@ -212,7 +212,7 @@ wait:
 
 						logger.Info("Healing disk '%s' on %s pool complete", disk, humanize.Ordinal(i+1))
 
-						if err := disk.Delete(ctx, pathJoin(minioMetaBucket, bucketMetaPrefix),
+						if err := disk.Delete(ctx, pathJoin(MinioMetaBucket, bucketMetaPrefix),
 							healingTrackerFilename, false); err != nil && !errors.Is(err, errFileNotFound) {
 							logger.LogIf(ctx, err)
 							continue

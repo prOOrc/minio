@@ -360,7 +360,7 @@ func (z *erasureServerPools) StorageInfo(ctx context.Context) (StorageInfo, []er
 	return storageInfo, errs
 }
 
-func (z *erasureServerPools) CrawlAndGetDataUsage(ctx context.Context, bf *bloomFilter, updates chan<- DataUsageInfo) error {
+func (z *erasureServerPools) CrawlAndGetDataUsage(ctx context.Context, bf *BloomFilter, updates chan<- DataUsageInfo) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -1288,7 +1288,7 @@ func (z *erasureServerPools) ListBuckets(ctx context.Context) (buckets []BucketI
 
 func (z *erasureServerPools) HealFormat(ctx context.Context, dryRun bool) (madmin.HealResultItem, error) {
 	// Acquire lock on format.json
-	formatLock := z.NewNSLock(minioMetaBucket, formatConfigFile)
+	formatLock := z.NewNSLock(MinioMetaBucket, formatConfigFile)
 	if err := formatLock.GetLock(ctx, globalOperationTimeout); err != nil {
 		return madmin.HealResultItem{}, err
 	}
@@ -1332,7 +1332,7 @@ func (z *erasureServerPools) HealBucket(ctx context.Context, bucket string, opts
 	}
 
 	// Attempt heal on the bucket metadata, ignore any failures
-	_, _ = z.HealObject(ctx, minioMetaBucket, pathJoin(bucketConfigPrefix, bucket, bucketMetadataFile), "", opts)
+	_, _ = z.HealObject(ctx, MinioMetaBucket, pathJoin(bucketConfigPrefix, bucket, bucketMetadataFile), "", opts)
 
 	for _, pool := range z.serverPools {
 		result, err := pool.HealBucket(ctx, bucket, opts)
@@ -1488,7 +1488,7 @@ func (z *erasureServerPools) HealObject(ctx context.Context, bucket, object, ver
 	object = encodeDirObject(object)
 
 	lk := z.NewNSLock(bucket, object)
-	if bucket == minioMetaBucket {
+	if bucket == MinioMetaBucket {
 		// For .minio.sys bucket heals we should hold write locks.
 		if err := lk.GetLock(ctx, globalOperationTimeout); err != nil {
 			return madmin.HealResultItem{}, err

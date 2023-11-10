@@ -16,9 +16,17 @@
 
 package notify
 
+import (
+	"github.com/minio/minio/pkg/event/target"
+)
+
 // Config - notification target configuration structure, holds
 // information about various notification targets.
 type Config struct {
+	MySQL      map[string]target.MySQLArgs      `json:"mysql"`
+	PostgreSQL map[string]target.PostgreSQLArgs `json:"postgresql"`
+	Redis      map[string]target.RedisArgs      `json:"redis"`
+	Webhook    map[string]target.WebhookArgs    `json:"webhook"`
 }
 
 const (
@@ -28,7 +36,15 @@ const (
 // NewConfig - initialize notification config.
 func NewConfig() Config {
 	// Make sure to initialize notification targets
-	cfg := Config{}
-
+	cfg := Config{
+		Redis:      make(map[string]target.RedisArgs),
+		MySQL:      make(map[string]target.MySQLArgs),
+		Webhook:    make(map[string]target.WebhookArgs),
+		PostgreSQL: make(map[string]target.PostgreSQLArgs),
+	}
+	cfg.Redis[defaultTarget] = target.RedisArgs{}
+	cfg.MySQL[defaultTarget] = target.MySQLArgs{}
+	cfg.Webhook[defaultTarget] = target.WebhookArgs{}
+	cfg.PostgreSQL[defaultTarget] = target.PostgreSQLArgs{}
 	return cfg
 }

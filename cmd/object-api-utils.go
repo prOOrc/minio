@@ -53,13 +53,13 @@ import (
 
 const (
 	// MinIO meta bucket.
-	minioMetaBucket = ".minio.sys"
+	MinioMetaBucket = ".minio.sys"
 	// Multipart meta prefix.
 	mpartMetaPrefix = "multipart"
 	// MinIO Multipart meta prefix.
-	minioMetaMultipartBucket = minioMetaBucket + SlashSeparator + mpartMetaPrefix
+	minioMetaMultipartBucket = MinioMetaBucket + SlashSeparator + mpartMetaPrefix
 	// MinIO Tmp meta prefix.
-	minioMetaTmpBucket = minioMetaBucket + "/tmp"
+	minioMetaTmpBucket = MinioMetaBucket + "/tmp"
 	// DNS separator (period), used for bucket name validation.
 	dnsDelimiter = "."
 	// On compressed files bigger than this;
@@ -73,7 +73,7 @@ const (
 // isMinioBucket returns true if given bucket is a MinIO internal
 // bucket and false otherwise.
 func isMinioMetaBucketName(bucket string) bool {
-	return bucket == minioMetaBucket ||
+	return bucket == MinioMetaBucket ||
 		bucket == minioMetaMultipartBucket ||
 		bucket == minioMetaTmpBucket ||
 		bucket == dataUsageBucket
@@ -343,7 +343,7 @@ func isReservedOrInvalidBucket(bucketEntry string, strict bool) bool {
 
 // Returns true if input bucket is a reserved minio meta bucket '.minio.sys'.
 func isMinioMetaBucket(bucketName string) bool {
-	return bucketName == minioMetaBucket
+	return bucketName == MinioMetaBucket
 }
 
 // Returns true if input bucket is a reserved minio bucket 'minio'.
@@ -820,7 +820,7 @@ func (g *GetObjectReader) Read(p []byte) (n int, err error) {
 	return
 }
 
-//SealMD5CurrFn seals md5sum with object encryption key and returns sealed
+// SealMD5CurrFn seals md5sum with object encryption key and returns sealed
 // md5sum
 type SealMD5CurrFn func([]byte) []byte
 

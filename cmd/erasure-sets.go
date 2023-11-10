@@ -355,7 +355,7 @@ func newErasureSets(ctx context.Context, endpoints Endpoints, storageDisks []Sto
 		mrfOperations:      make(map[healSource]int),
 	}
 
-	mutex := newNSLock(globalIsDistErasure)
+	mutex := NewNSLock(globalIsDistErasure)
 
 	// Number of buffers, max 2GB.
 	n := setCount * setDriveCount

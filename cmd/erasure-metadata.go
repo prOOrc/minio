@@ -103,7 +103,7 @@ func (fi FileInfo) ToObjectInfo(bucket, object string) ObjectInfo {
 	object = decodeDirObject(object)
 	versionID := fi.VersionID
 	if globalBucketVersioningSys.Enabled(bucket) && versionID == "" {
-		versionID = nullVersionID
+		versionID = NullVersionID
 	}
 
 	objInfo := ObjectInfo{

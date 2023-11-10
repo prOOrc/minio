@@ -35,7 +35,7 @@ func TestDiskCacheFormat(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Do the basic sanity checks to check if initFormatCache() did its job.
-	cacheFormatPath := pathJoin(fsDirs[0], minioMetaBucket, formatConfigFile)
+	cacheFormatPath := pathJoin(fsDirs[0], MinioMetaBucket, formatConfigFile)
 	f, err := os.OpenFile(cacheFormatPath, os.O_RDWR|os.O_SYNC, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -252,13 +252,13 @@ func genFormatCacheInvalidDisksOrder() []*formatCacheV2 {
 }
 
 // Wrapper for calling FormatCache tests - validates
-//  - valid format
-//  - unrecognized version number
-//  - unrecognized format tag
-//  - unrecognized cache version
-//  - wrong number of Disks entries
-//  - invalid This uuid
-//  - invalid Disks order
+//   - valid format
+//   - unrecognized version number
+//   - unrecognized format tag
+//   - unrecognized cache version
+//   - wrong number of Disks entries
+//   - invalid This uuid
+//   - invalid Disks order
 func TestFormatCache(t *testing.T) {
 	formatInputCases := [][]*formatCacheV1{
 		genFormatCacheValid(),

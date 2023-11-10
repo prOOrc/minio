@@ -205,6 +205,10 @@ func initHelp() {
 		config.KmsKesSubSys:         crypto.HelpKes,
 		config.LoggerWebhookSubSys:  logger.Help,
 		config.AuditWebhookSubSys:   logger.HelpAudit,
+		config.NotifyMySQLSubSys:    notify.HelpMySQL,
+		config.NotifyPostgresSubSys: notify.HelpPostgres,
+		config.NotifyRedisSubSys:    notify.HelpRedis,
+		config.NotifyWebhookSubSys:  notify.HelpWebhook,
 	}
 
 	config.RegisterHelpSubSys(helpMap)

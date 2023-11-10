@@ -40,7 +40,7 @@ func (a GatewayUnsupported) BackendInfo() BackendInfo {
 }
 
 // CrawlAndGetDataUsage - crawl is not implemented for gateway
-func (a GatewayUnsupported) CrawlAndGetDataUsage(ctx context.Context, bf *bloomFilter, updates chan<- DataUsageInfo) error {
+func (a GatewayUnsupported) CrawlAndGetDataUsage(ctx context.Context, bf *BloomFilter, updates chan<- DataUsageInfo) error {
 	logger.CriticalIf(ctx, errors.New("not implemented"))
 	return NotImplemented{}
 }

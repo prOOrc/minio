@@ -22,12 +22,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	yaml "gopkg.in/yaml.v2"
 	"io/ioutil"
 	"path/filepath"
 	"runtime"
 	"strings"
-
-	yaml "gopkg.in/yaml.v2"
 )
 
 // ConfigEncoding is a generic interface which

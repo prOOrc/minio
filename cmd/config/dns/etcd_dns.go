@@ -19,10 +19,9 @@ package dns
 import (
 	"errors"
 	"fmt"
-	"strings"
-
 	"github.com/coredns/coredns/plugin/etcd/msg"
 	"github.com/minio/minio-go/v7/pkg/set"
+	"strings"
 )
 
 // ErrNoEntriesFound - Indicates no entries were found for the given key (directory)

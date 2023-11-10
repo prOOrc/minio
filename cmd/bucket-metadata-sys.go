@@ -64,7 +64,7 @@ func (sys *BucketMetadataSys) Set(bucket string, meta BucketMetadata) {
 		return
 	}
 
-	if bucket != minioMetaBucket {
+	if bucket != MinioMetaBucket {
 		sys.Lock()
 		sys.metadataMap[bucket] = meta
 		sys.Unlock()
@@ -84,7 +84,7 @@ func (sys *BucketMetadataSys) Update(bucket string, configFile string, configDat
 		switch configFile {
 		case bucketSSEConfig:
 			if globalGatewayName == NASBackendGateway {
-				meta, err := loadBucketMetadata(GlobalContext, objAPI, bucket)
+				meta, err := LoadBucketMetadata(GlobalContext, objAPI, bucket)
 				if err != nil {
 					return err
 				}
@@ -93,7 +93,7 @@ func (sys *BucketMetadataSys) Update(bucket string, configFile string, configDat
 			}
 		case bucketLifecycleConfig:
 			if globalGatewayName == NASBackendGateway {
-				meta, err := loadBucketMetadata(GlobalContext, objAPI, bucket)
+				meta, err := LoadBucketMetadata(GlobalContext, objAPI, bucket)
 				if err != nil {
 					return err
 				}
@@ -102,7 +102,7 @@ func (sys *BucketMetadataSys) Update(bucket string, configFile string, configDat
 			}
 		case bucketTaggingConfig:
 			if globalGatewayName == NASBackendGateway {
-				meta, err := loadBucketMetadata(GlobalContext, objAPI, bucket)
+				meta, err := LoadBucketMetadata(GlobalContext, objAPI, bucket)
 				if err != nil {
 					return err
 				}
@@ -111,7 +111,7 @@ func (sys *BucketMetadataSys) Update(bucket string, configFile string, configDat
 			}
 		case bucketNotificationConfig:
 			if globalGatewayName == NASBackendGateway {
-				meta, err := loadBucketMetadata(GlobalContext, objAPI, bucket)
+				meta, err := LoadBucketMetadata(GlobalContext, objAPI, bucket)
 				if err != nil {
 					return err
 				}
@@ -131,11 +131,11 @@ func (sys *BucketMetadataSys) Update(bucket string, configFile string, configDat
 		return NotImplemented{}
 	}
 
-	if bucket == minioMetaBucket {
+	if bucket == MinioMetaBucket {
 		return errInvalidArgument
 	}
 
-	meta, err := loadBucketMetadata(GlobalContext, objAPI, bucket)
+	meta, err := LoadBucketMetadata(GlobalContext, objAPI, bucket)
 	if err != nil {
 		return err
 	}
@@ -198,7 +198,7 @@ func (sys *BucketMetadataSys) Update(bucket string, configFile string, configDat
 // For all other bucket specific metadata, use the relevant
 // calls implemented specifically for each of those features.
 func (sys *BucketMetadataSys) Get(bucket string) (BucketMetadata, error) {
-	if globalIsGateway || bucket == minioMetaBucket {
+	if globalIsGateway || bucket == MinioMetaBucket {
 		return newBucketMetadata(bucket), errConfigNotFound
 	}
 
@@ -280,7 +280,7 @@ func (sys *BucketMetadataSys) GetNotificationConfig(bucket string) (*event.Confi
 		if objAPI == nil {
 			return nil, errServerNotInitialized
 		}
-		meta, err := loadBucketMetadata(GlobalContext, objAPI, bucket)
+		meta, err := LoadBucketMetadata(GlobalContext, objAPI, bucket)
 		if err != nil {
 			return nil, err
 		}
@@ -328,10 +328,10 @@ func (sys *BucketMetadataSys) GetPolicyConfig(bucket string) (*policy.Policy, er
 		}
 		return nil, err
 	}
-	if meta.policyConfig == nil {
+	if meta.PolicyConfig == nil {
 		return nil, BucketPolicyNotFound{Bucket: bucket}
 	}
-	return meta.policyConfig, nil
+	return meta.PolicyConfig, nil
 }
 
 // GetQuotaConfig returns configured bucket quota
@@ -400,7 +400,7 @@ func (sys *BucketMetadataSys) GetConfig(bucket string) (BucketMetadata, error) {
 		return newBucketMetadata(bucket), NotImplemented{}
 	}
 
-	if bucket == minioMetaBucket {
+	if bucket == MinioMetaBucket {
 		return newBucketMetadata(bucket), errInvalidArgument
 	}
 
@@ -410,7 +410,7 @@ func (sys *BucketMetadataSys) GetConfig(bucket string) (BucketMetadata, error) {
 	if ok {
 		return meta, nil
 	}
-	meta, err := loadBucketMetadata(GlobalContext, objAPI, bucket)
+	meta, err := LoadBucketMetadata(GlobalContext, objAPI, bucket)
 	if err != nil {
 		return meta, err
 	}
@@ -447,7 +447,7 @@ func (sys *BucketMetadataSys) concurrentLoad(ctx context.Context, buckets []Buck
 				// Ensure heal opts for bucket metadata be deep healed all the time.
 				ScanMode: madmin.HealDeepScan,
 			})
-			meta, err := loadBucketMetadata(ctx, objAPI, buckets[index].Name)
+			meta, err := LoadBucketMetadata(ctx, objAPI, buckets[index].Name)
 			if err != nil {
 				return err
 			}

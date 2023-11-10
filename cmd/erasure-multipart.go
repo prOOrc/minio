@@ -66,7 +66,7 @@ func (er erasureObjects) checkUploadIDExists(ctx context.Context, bucket, object
 	return err
 }
 
-// Removes part given by partName belonging to a mulitpart upload from minioMetaBucket
+// Removes part given by partName belonging to a mulitpart upload from MinioMetaBucket
 func (er erasureObjects) removeObjectPart(bucket, object, uploadID, dataDir string, partNumber int) {
 	uploadIDPath := er.getUploadIDDir(bucket, object, uploadID)
 	curpartPath := pathJoin(uploadIDPath, dataDir, fmt.Sprintf("part.%d", partNumber))
@@ -431,7 +431,7 @@ func (er erasureObjects) PutObjectPart(ctx context.Context, bucket, object, uplo
 
 	onlineDisks = shuffleDisks(onlineDisks, fi.Erasure.Distribution)
 
-	// Need a unique name for the part being written in minioMetaBucket to
+	// Need a unique name for the part being written in MinioMetaBucket to
 	// accommodate concurrent PutObjectPart requests
 
 	partSuffix := fmt.Sprintf("part.%d", partID)

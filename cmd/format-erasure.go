@@ -181,7 +181,7 @@ func formatGetBackendErasureVersion(formatPath string) (string, error) {
 // this code calls migration in sequence, such as V1 is migrated to V2
 // first before it V2 migrates to V3.n
 func formatErasureMigrate(export string) error {
-	formatPath := pathJoin(export, minioMetaBucket, formatConfigFile)
+	formatPath := pathJoin(export, MinioMetaBucket, formatConfigFile)
 	version, err := formatGetBackendErasureVersion(formatPath)
 	if err != nil {
 		return fmt.Errorf("Disk %s: %w", export, err)
@@ -215,7 +215,7 @@ func formatErasureMigrateV1ToV2(export, version string) error {
 		return fmt.Errorf(`format version expected %s, found %s`, formatErasureVersionV1, version)
 	}
 
-	formatPath := pathJoin(export, minioMetaBucket, formatConfigFile)
+	formatPath := pathJoin(export, MinioMetaBucket, formatConfigFile)
 
 	formatV1 := &formatErasureV1{}
 	b, err := ioutil.ReadFile(formatPath)
@@ -249,7 +249,7 @@ func formatErasureMigrateV2ToV3(export, version string) error {
 		return fmt.Errorf(`format version expected %s, found %s`, formatErasureVersionV2, version)
 	}
 
-	formatPath := pathJoin(export, minioMetaBucket, formatConfigFile)
+	formatPath := pathJoin(export, MinioMetaBucket, formatConfigFile)
 	formatV2 := &formatErasureV2{}
 	b, err := ioutil.ReadFile(formatPath)
 	if err != nil {
@@ -347,7 +347,7 @@ func saveHealingTracker(disk StorageAPI, diskID string) error {
 	if err != nil {
 		return err
 	}
-	return disk.WriteAll(context.TODO(), minioMetaBucket,
+	return disk.WriteAll(context.TODO(), MinioMetaBucket,
 		pathJoin(bucketMetaPrefix, slashSeparator, healingTrackerFilename),
 		htrackerBytes)
 }
@@ -372,15 +372,15 @@ func saveFormatErasure(disk StorageAPI, format *formatErasureV3, heal bool) erro
 	tmpFormat := mustGetUUID()
 
 	// Purge any existing temporary file, okay to ignore errors here.
-	defer disk.Delete(context.TODO(), minioMetaBucket, tmpFormat, false)
+	defer disk.Delete(context.TODO(), MinioMetaBucket, tmpFormat, false)
 
 	// write to unique file.
-	if err = disk.WriteAll(context.TODO(), minioMetaBucket, tmpFormat, formatBytes); err != nil {
+	if err = disk.WriteAll(context.TODO(), MinioMetaBucket, tmpFormat, formatBytes); err != nil {
 		return err
 	}
 
 	// Rename file `uuid.json` --> `format.json`.
-	if err = disk.RenameFile(context.TODO(), minioMetaBucket, tmpFormat, minioMetaBucket, formatConfigFile); err != nil {
+	if err = disk.RenameFile(context.TODO(), MinioMetaBucket, tmpFormat, MinioMetaBucket, formatConfigFile); err != nil {
 		return err
 	}
 
@@ -392,7 +392,7 @@ func saveFormatErasure(disk StorageAPI, format *formatErasureV3, heal bool) erro
 }
 
 var ignoredHiddenDirectories = map[string]struct{}{
-	minioMetaBucket:             {}, // metabucket '.minio.sys'
+	MinioMetaBucket:             {}, // metabucket '.minio.sys'
 	".minio":                    {}, // users may choose to double down the backend as the config folder for certs
 	".snapshot":                 {}, // .snapshot for ignoring NetApp based persistent volumes WAFL snapshot
 	"lost+found":                {}, // 'lost+found' directory default on ext4 filesystems
@@ -412,7 +412,7 @@ func isHiddenDirectories(vols ...VolInfo) bool {
 
 // loadFormatErasure - loads format.json from disk.
 func loadFormatErasure(disk StorageAPI) (format *formatErasureV3, err error) {
-	buf, err := disk.ReadAll(context.TODO(), minioMetaBucket, formatConfigFile)
+	buf, err := disk.ReadAll(context.TODO(), MinioMetaBucket, formatConfigFile)
 	if err != nil {
 		// 'file not found' and 'volume not found' as
 		// same. 'volume not found' usually means its a fresh disk.
@@ -700,7 +700,7 @@ func initErasureMetaVolumesInLocalDisks(storageDisks []StorageAPI, formats []*fo
 		if err == nil {
 			continue
 		}
-		return toObjectErr(err, minioMetaBucket)
+		return toObjectErr(err, MinioMetaBucket)
 	}
 
 	// Return success here.
@@ -923,7 +923,7 @@ func makeFormatErasureMetaVolumes(disk StorageAPI) error {
 		return errDiskNotFound
 	}
 	// Attempt to create MinIO internal buckets.
-	return disk.MakeVolBulk(context.TODO(), minioMetaBucket, minioMetaTmpBucket, minioMetaMultipartBucket, dataUsageBucket)
+	return disk.MakeVolBulk(context.TODO(), MinioMetaBucket, minioMetaTmpBucket, minioMetaMultipartBucket, dataUsageBucket)
 }
 
 // Initialize a new set of set formats which will be written to all disks.
