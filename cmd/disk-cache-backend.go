@@ -128,7 +128,7 @@ func (m *cacheMeta) ToObjectInfo(bucket, object string) (o ObjectInfo) {
 
 	// etag/md5Sum has already been extracted. We need to
 	// remove to avoid it from appearing as part of user-defined metadata
-	o.UserDefined = cleanMetadata(m.Meta)
+	o.UserDefined = CleanMetadata(m.Meta)
 	return o
 }
 
