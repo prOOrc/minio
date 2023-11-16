@@ -269,7 +269,7 @@ func TestCleanMetadata(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		if got := cleanMetadata(tt.metadata); !reflect.DeepEqual(got, tt.want) {
+		if got := CleanMetadata(tt.metadata); !reflect.DeepEqual(got, tt.want) {
 			t.Errorf("Test %s failed, expected %v, got %v", tt.name, tt.want, got)
 		}
 	}

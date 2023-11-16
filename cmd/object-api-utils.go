@@ -260,7 +260,7 @@ func getCompleteMultipartMD5(parts []CompletePart) string {
 }
 
 // Clean unwanted fields from metadata
-func cleanMetadata(metadata map[string]string) map[string]string {
+func CleanMetadata(metadata map[string]string) map[string]string {
 	// Remove STANDARD StorageClass
 	metadata = removeStandardStorageClass(metadata)
 	// Clean meta etag keys 'md5Sum', 'etag', "expires", "x-amz-tagging".
