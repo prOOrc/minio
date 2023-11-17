@@ -190,7 +190,7 @@ func (m fsMetaV1) ToObjectInfo(bucket, object string, fi os.FileInfo) ObjectInfo
 	// remove to avoid it from appearing as part of
 	// response headers. e.g, X-Minio-* or X-Amz-*.
 	// Tags have also been extracted, we remove that as well.
-	objInfo.UserDefined = cleanMetadata(m.Meta)
+	objInfo.UserDefined = CleanMetadata(m.Meta)
 
 	// All the parts per object.
 	objInfo.Parts = m.Parts
