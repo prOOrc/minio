@@ -20,6 +20,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"github.com/shirou/gopsutil/v3/net"
 	"net/http"
 	"os"
 	"sync"
@@ -27,9 +28,9 @@ import (
 
 	"github.com/minio/minio/pkg/disk"
 	"github.com/minio/minio/pkg/madmin"
-	cpuhw "github.com/shirou/gopsutil/cpu"
-	memhw "github.com/shirou/gopsutil/mem"
-	"github.com/shirou/gopsutil/process"
+	cpuhw "github.com/shirou/gopsutil/v3/cpu"
+	memhw "github.com/shirou/gopsutil/v3/mem"
+	"github.com/shirou/gopsutil/v3/process"
 )
 
 func getLocalCPUInfo(ctx context.Context, r *http.Request) madmin.ServerCPUInfo {
@@ -264,7 +265,8 @@ func getLocalProcInfo(ctx context.Context, r *http.Request) madmin.ServerProcInf
 		}
 		sysProc.Name = name
 
-		netIOCounters, err := proc.NetIOCountersWithContext(ctx, false)
+		// Issue: https://github.com/shirou/gopsutil/issues/429
+		netIOCounters, err := net.IOCounters(false)
 		if err != nil {
 			return errProcInfo("netio-counters", err)
 		}
@@ -320,7 +322,8 @@ func getLocalProcInfo(ctx context.Context, r *http.Request) madmin.ServerProcInf
 		if err != nil {
 			return errProcInfo("status", err)
 		}
-		sysProc.Status = status
+		// https://github.com/shirou/gopsutil/commit/0969c9436bc0d9bf190face9c4a3c4a430b98523
+		sysProc.Status = status[0]
 
 		tgid, err := proc.Tgid()
 		if err != nil {

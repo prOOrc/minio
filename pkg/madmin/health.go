@@ -29,12 +29,12 @@ import (
 	"github.com/minio/minio/pkg/net"
 
 	smart "github.com/minio/minio/pkg/smart"
-	"github.com/shirou/gopsutil/cpu"
-	diskhw "github.com/shirou/gopsutil/disk"
-	"github.com/shirou/gopsutil/host"
-	"github.com/shirou/gopsutil/mem"
-	nethw "github.com/shirou/gopsutil/net"
-	"github.com/shirou/gopsutil/process"
+	"github.com/shirou/gopsutil/v3/cpu"
+	diskhw "github.com/shirou/gopsutil/v3/disk"
+	"github.com/shirou/gopsutil/v3/host"
+	"github.com/shirou/gopsutil/v3/mem"
+	nethw "github.com/shirou/gopsutil/v3/net"
+	"github.com/shirou/gopsutil/v3/process"
 )
 
 // HealthInfo - MinIO cluster's health Info

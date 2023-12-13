@@ -27,8 +27,8 @@ import (
 
 	"github.com/minio/minio/pkg/madmin"
 	"github.com/minio/minio/pkg/smart"
-	diskhw "github.com/shirou/gopsutil/disk"
-	"github.com/shirou/gopsutil/host"
+	diskhw "github.com/shirou/gopsutil/v3/disk"
+	"github.com/shirou/gopsutil/v3/host"
 )
 
 func getLocalOsInfo(ctx context.Context, r *http.Request) madmin.ServerOsInfo {
