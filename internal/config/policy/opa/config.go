@@ -20,6 +20,7 @@ package opa
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -192,6 +193,9 @@ func (o *Opa) IsAllowed(args iampolicy.Args) (bool, error) {
 		return false, err
 	}
 	defer o.args.CloseRespFn(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return false, fmt.Errorf("invalid status: %d", resp.StatusCode)
+	}
 
 	// Read the body to be saved later.
 	opaRespBytes, err := ioutil.ReadAll(resp.Body)

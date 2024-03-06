@@ -19,14 +19,6 @@ package juicefs
 import (
 	"context"
 	"fmt"
-	"github.com/google/uuid"              //nolint:gofumpt
-	"github.com/juicedata/juicefs/pkg/fs" //nolint:gofumpt
-	"github.com/juicedata/juicefs/pkg/meta"
-	"github.com/juicedata/juicefs/pkg/utils"
-	"github.com/juicedata/juicefs/pkg/version"
-	"github.com/minio/cli"
-	"github.com/minio/madmin-go"
-	minio "github.com/minio/minio/cmd"
 	"io"
 	"net/http"
 	"os"
@@ -37,6 +29,16 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/juicedata/juicefs/pkg/fs" //nolint:gofumpt
+	"github.com/juicedata/juicefs/pkg/meta"
+	"github.com/juicedata/juicefs/pkg/utils"
+	"github.com/juicedata/juicefs/pkg/version"
+	"github.com/minio/cli"
+	"github.com/minio/madmin-go"
+	minio "github.com/minio/minio/cmd"
+	iampolicy "github.com/minio/pkg/iam/policy"
 
 	"github.com/juicedata/juicefs/pkg/vfs"
 	"github.com/minio/minio-go/v7/pkg/s3utils"
@@ -164,6 +166,11 @@ func (n *JfsObjects) IsEncryptionSupported() bool {
 
 // IsReady returns whether the layer is ready to take requests.
 func (n *JfsObjects) IsReady(_ context.Context) bool {
+	return true
+}
+
+// IsNotificationSupported returns whether bucket notification is applicable for this layer.
+func (a *JfsObjects) IsNotificationSupported() bool {
 	return true
 }
 
@@ -453,7 +460,44 @@ func (n *JfsObjects) ListObjects(ctx context.Context, bucket, prefix, marker, de
 	if maxKeys == 0 {
 		maxKeys = -1 // list as many objects as possible
 	}
-	return minio.ListObjects(ctx, n, bucket, prefix, marker, delimiter, maxKeys, n.listPool, n.listDirFactory(), n.isLeaf, n.isLeafDir, getObjectInfo, getObjectInfo)
+	originListDir := n.listDirFactory()
+	var listDir minio.ListDirFunc
+	isOwner := minio.GetIsOwner(ctx)
+	enabled := !isOwner
+	// enabled := false
+	if enabled {
+		globalIAMSys := minio.GetGlobalIAMSys()
+		cred := minio.GetCredentials(ctx)
+		conditionValues := minio.GetConditionValues(ctx)
+		action := iampolicy.GetObjectAction
+		listDir = func(bucket, prefixDir, prefixEntry string) (emptyDir bool, entries []string, delayIsLeaf bool) {
+			emptyDir, entries, delayIsLeaf = originListDir(bucket, prefixDir, prefixEntry)
+			filteredEntries := make([]string, 0, len(entries))
+			for _, entry := range entries {
+				objectName := prefixDir + entry
+				isAllowed := globalIAMSys.IsAllowed(iampolicy.Args{
+					AccountName:     cred.AccessKey,
+					Groups:          cred.Groups,
+					Action:          iampolicy.Action(action),
+					BucketName:      bucket,
+					ConditionValues: conditionValues,
+					ObjectName:      objectName,
+					IsOwner:         isOwner,
+					Claims:          cred.Claims,
+				})
+				if isAllowed {
+					filteredEntries = append(filteredEntries, entry)
+				}
+			}
+			if !emptyDir && len(filteredEntries) == 0 {
+				emptyDir = true
+			}
+			return emptyDir, filteredEntries, delayIsLeaf
+		}
+	} else {
+		listDir = originListDir
+	}
+	return minio.ListObjects(ctx, n, bucket, prefix, marker, delimiter, maxKeys, n.listPool, listDir, n.isLeaf, n.isLeafDir, getObjectInfo, getObjectInfo)
 }
 
 // ListObjectsV2 lists all blobs in JFS bucket filtered by prefix

@@ -623,10 +623,10 @@ func (sys *IAMSys) SetTempUser(ctx context.Context, accessKey string, cred auth.
 		return errServerNotInitialized
 	}
 
-	if globalPolicyOPA != nil {
-		// If OPA is set, we do not need to set a policy mapping.
-		policyName = ""
-	}
+	// if globalPolicyOPA != nil {
+	// 	// If OPA is set, we do not need to set a policy mapping.
+	// 	policyName = ""
+	// }
 
 	err := sys.store.SetTempUser(ctx, accessKey, cred, policyName)
 	if err != nil {
@@ -1601,4 +1601,8 @@ func NewIAMSys() *IAMSys {
 		usersSysType: MinIOUsersSysType,
 		configLoaded: make(chan struct{}),
 	}
+}
+
+func GetGlobalIAMSys() *IAMSys {
+	return globalIAMSys
 }
