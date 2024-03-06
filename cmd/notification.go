@@ -795,6 +795,12 @@ func (sys *NotificationSys) Send(args eventArgs) {
 	targetIDSet := sys.bucketRulesMap[args.BucketName].Match(args.EventName, args.Object.Name)
 	sys.RUnlock()
 
+	if len(targetIDSet) == 0 && globalNotificationSendToAll {
+		globalConfigTargetList.RLock()
+		targetIDSet = event.NewTargetIDSet(globalConfigTargetList.List()...)
+		globalConfigTargetList.RUnlock()
+	}
+
 	if len(targetIDSet) == 0 {
 		return
 	}

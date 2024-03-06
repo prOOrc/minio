@@ -316,6 +316,10 @@ func StartGateway(ctx *cli.Context, gw Gateway) {
 		logger.FatalIf(globalNotificationSys.InitBucketTargets(GlobalContext, newObject), "Unable to initialize bucket targets for notification system")
 	}
 
+	if gatewayName == JuiceFSGateway {
+		logger.FatalIf(globalNotificationSys.InitBucketTargets(GlobalContext, newObject), "Unable to initialize bucket targets for notification system")
+	}
+
 	if globalCacheConfig.Enabled {
 		// initialize the new disk cache objects.
 		var cacheAPI CacheObjectLayer
