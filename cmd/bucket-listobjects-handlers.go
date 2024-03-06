@@ -147,10 +147,15 @@ func (api objectAPIHandlers) ListObjectsV2MHandler(w http.ResponseWriter, r *htt
 		return
 	}
 
-	if s3Error := checkRequestAuthType(ctx, r, policy.ListBucketAction, bucket, ""); s3Error != ErrNone {
+	cred, conditionValues, claims, isOwner, s3Error := checkRequestAuthTypeCredentialConditionValues(ctx, r, policy.ListBucketAction, bucket, "")
+	if s3Error != ErrNone {
 		writeErrorResponse(ctx, w, errorCodes.ToAPIErr(s3Error), r.URL, guessIsBrowserReq(r))
 		return
 	}
+	ctx = SetCredentials(ctx, cred)
+	ctx = SetIsOwner(ctx, isOwner)
+	ctx = SetConditionValues(ctx, conditionValues)
+	ctx = SetClaims(ctx, claims)
 
 	urlValues := r.URL.Query()
 
@@ -214,10 +219,15 @@ func (api objectAPIHandlers) ListObjectsV2Handler(w http.ResponseWriter, r *http
 		return
 	}
 
-	if s3Error := checkRequestAuthType(ctx, r, policy.ListBucketAction, bucket, ""); s3Error != ErrNone {
+	cred, conditionValues, claims, isOwner, s3Error := checkRequestAuthTypeCredentialConditionValues(ctx, r, policy.ListBucketAction, bucket, "")
+	if s3Error != ErrNone {
 		writeErrorResponse(ctx, w, errorCodes.ToAPIErr(s3Error), r.URL, guessIsBrowserReq(r))
 		return
 	}
+	ctx = SetCredentials(ctx, cred)
+	ctx = SetIsOwner(ctx, isOwner)
+	ctx = SetConditionValues(ctx, conditionValues)
+	ctx = SetClaims(ctx, claims)
 
 	urlValues := r.URL.Query()
 
