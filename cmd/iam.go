@@ -2456,3 +2456,7 @@ func NewIAMSys() *IAMSys {
 		configLoaded:            make(chan struct{}),
 	}
 }
+
+func GetGlobalIAMSys() *IAMSys {
+	return globalIAMSys
+}

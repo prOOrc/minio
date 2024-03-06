@@ -282,12 +282,17 @@ func checkRequestAuthType(ctx context.Context, r *http.Request, action policy.Ac
 // returns APIErrorCode if any to be replied to the client.
 // Additionally returns the accessKey used in the request, and if this request is by an admin.
 func checkRequestAuthTypeCredential(ctx context.Context, r *http.Request, action policy.Action, bucketName, objectName string) (cred auth.Credentials, owner bool, s3Err APIErrorCode) {
+	cred, _, _, owner, s3Err = checkRequestAuthTypeCredentialConditionValues(ctx, r, action, bucketName, objectName)
+	return cred, owner, s3Err
+}
+
+func checkRequestAuthTypeCredentialConditionValues(ctx context.Context, r *http.Request, action policy.Action, bucketName, objectName string) (cred auth.Credentials, conditionValues map[string][]string, claims map[string]interface{}, owner bool, s3Err APIErrorCode) {
 	switch getRequestAuthType(r) {
 	case authTypeUnknown, authTypeStreamingSigned:
-		return cred, owner, ErrSignatureVersionNotSupported
+		return cred, conditionValues, claims, owner, ErrSignatureVersionNotSupported
 	case authTypePresignedV2, authTypeSignedV2:
 		if s3Err = isReqAuthenticatedV2(r); s3Err != ErrNone {
-			return cred, owner, s3Err
+			return cred, conditionValues, claims, owner, s3Err
 		}
 		cred, owner, s3Err = getReqAccessKeyV2(r)
 	case authTypeSigned, authTypePresigned:
@@ -297,18 +302,17 @@ func checkRequestAuthTypeCredential(ctx context.Context, r *http.Request, action
 			region = ""
 		}
 		if s3Err = isReqAuthenticated(ctx, r, region, serviceS3); s3Err != ErrNone {
-			return cred, owner, s3Err
+			return cred, conditionValues, claims, owner, s3Err
 		}
 		cred, owner, s3Err = getReqAccessKeyV4(r, region, serviceS3)
 	}
 	if s3Err != ErrNone {
-		return cred, owner, s3Err
+		return cred, conditionValues, claims, owner, s3Err
 	}
 
-	var claims map[string]interface{}
 	claims, s3Err = checkClaimsFromToken(r, cred)
 	if s3Err != ErrNone {
-		return cred, owner, s3Err
+		return cred, conditionValues, claims, owner, s3Err
 	}
 
 	// LocationConstraint is valid only for CreateBucketAction.
@@ -318,7 +322,7 @@ func checkRequestAuthTypeCredential(ctx context.Context, r *http.Request, action
 		payload, err := ioutil.ReadAll(io.LimitReader(r.Body, maxLocationConstraintSize))
 		if err != nil {
 			logger.LogIf(ctx, err, logger.Application)
-			return cred, owner, ErrMalformedXML
+			return cred, conditionValues, claims, owner, ErrMalformedXML
 		}
 
 		// Populate payload to extract location constraint.
@@ -327,7 +331,7 @@ func checkRequestAuthTypeCredential(ctx context.Context, r *http.Request, action
 		var s3Error APIErrorCode
 		locationConstraint, s3Error = parseLocationConstraint(r)
 		if s3Error != ErrNone {
-			return cred, owner, s3Error
+			return cred, conditionValues, claims, owner, s3Error
 		}
 
 		// Populate payload again to handle it in HTTP handler.
@@ -336,19 +340,19 @@ func checkRequestAuthTypeCredential(ctx context.Context, r *http.Request, action
 	if cred.AccessKey != "" {
 		logger.GetReqInfo(ctx).AccessKey = cred.AccessKey
 	}
-
 	if action != policy.ListAllMyBucketsAction && cred.AccessKey == "" {
+		conditionValues = getConditionValues(r, locationConstraint, "", nil)
 		// Anonymous checks are not meant for ListBuckets action
 		if globalPolicySys.IsAllowed(policy.Args{
 			AccountName:     cred.AccessKey,
 			Action:          action,
 			BucketName:      bucketName,
-			ConditionValues: getConditionValues(r, locationConstraint, "", nil),
+			ConditionValues: conditionValues,
 			IsOwner:         false,
 			ObjectName:      objectName,
 		}) {
 			// Request is allowed return the appropriate access key.
-			return cred, owner, ErrNone
+			return cred, conditionValues, claims, owner, ErrNone
 		}
 
 		if action == policy.ListBucketVersionsAction {
@@ -358,30 +362,30 @@ func checkRequestAuthTypeCredential(ctx context.Context, r *http.Request, action
 				AccountName:     cred.AccessKey,
 				Action:          policy.ListBucketAction,
 				BucketName:      bucketName,
-				ConditionValues: getConditionValues(r, locationConstraint, "", nil),
+				ConditionValues: conditionValues,
 				IsOwner:         false,
 				ObjectName:      objectName,
 			}) {
 				// Request is allowed return the appropriate access key.
-				return cred, owner, ErrNone
+				return cred, conditionValues, claims, owner, ErrNone
 			}
 		}
 
-		return cred, owner, ErrAccessDenied
+		return cred, conditionValues, claims, owner, ErrAccessDenied
 	}
-
+	conditionValues = getConditionValues(r, "", cred.AccessKey, claims)
 	if globalIAMSys.IsAllowed(iampolicy.Args{
 		AccountName:     cred.AccessKey,
 		Groups:          cred.Groups,
 		Action:          iampolicy.Action(action),
 		BucketName:      bucketName,
-		ConditionValues: getConditionValues(r, "", cred.AccessKey, claims),
+		ConditionValues: conditionValues,
 		ObjectName:      objectName,
 		IsOwner:         owner,
 		Claims:          claims,
 	}) {
 		// Request is allowed return the appropriate access key.
-		return cred, owner, ErrNone
+		return cred, conditionValues, claims, owner, ErrNone
 	}
 
 	if action == policy.ListBucketVersionsAction {
@@ -392,17 +396,17 @@ func checkRequestAuthTypeCredential(ctx context.Context, r *http.Request, action
 			Groups:          cred.Groups,
 			Action:          iampolicy.ListBucketAction,
 			BucketName:      bucketName,
-			ConditionValues: getConditionValues(r, "", cred.AccessKey, claims),
+			ConditionValues: conditionValues,
 			ObjectName:      objectName,
 			IsOwner:         owner,
 			Claims:          claims,
 		}) {
 			// Request is allowed return the appropriate access key.
-			return cred, owner, ErrNone
+			return cred, conditionValues, claims, owner, ErrNone
 		}
 	}
 
-	return cred, owner, ErrAccessDenied
+	return cred, conditionValues, claims, owner, ErrAccessDenied
 }
 
 // Verify if request has valid AWS Signature Version '2'.
@@ -676,4 +680,104 @@ func isPutActionAllowed(ctx context.Context, atype authType, bucketName, objectN
 		return ErrNone
 	}
 	return ErrAccessDenied
+}
+
+// Key used for Get/SetCredentials
+type contextCredentialsKeyType string
+
+const contextCredentialsKey = contextCredentialsKeyType("miniocred")
+
+// SetCredentials sets Credentials in the context.
+func SetCredentials(ctx context.Context, cred auth.Credentials) context.Context {
+	if ctx == nil {
+		return nil
+	}
+	return context.WithValue(ctx, contextCredentialsKey, cred)
+}
+
+// GetCredentials returns Credentials if set.
+func GetCredentials(ctx context.Context) (cred auth.Credentials) {
+	if ctx == nil {
+		return cred
+	}
+	r, ok := ctx.Value(contextCredentialsKey).(auth.Credentials)
+	if ok {
+		return r
+	}
+	return cred
+}
+
+// Key used for Get/SetIsOwner
+type contextIsOwnerKeyType string
+
+const contextIsOwnerKey = contextIsOwnerKeyType("minioowner")
+
+// SetIsOwner sets IsOwner in the context.
+func SetIsOwner(ctx context.Context, isOwner bool) context.Context {
+	if ctx == nil {
+		return nil
+	}
+	return context.WithValue(ctx, contextIsOwnerKey, isOwner)
+}
+
+// GetIsOwner returns IsOwner if set.
+func GetIsOwner(ctx context.Context) (isOwner bool) {
+	if ctx == nil {
+		return isOwner
+	}
+	r, ok := ctx.Value(contextIsOwnerKey).(bool)
+	if ok {
+		return r
+	}
+	return isOwner
+}
+
+// Key used for Get/SetConditionValues
+type contextConditionValuesKeyType string
+
+const contextConditionValuesKey = contextConditionValuesKeyType("minioconditionvalues")
+
+// SetConditionValues sets ConditionValues in the context.
+func SetConditionValues(ctx context.Context, conditionValues map[string][]string) context.Context {
+	if ctx == nil {
+		return nil
+	}
+	return context.WithValue(ctx, contextConditionValuesKey, conditionValues)
+}
+
+// GetConditionValues returns ConditionValues if set.
+func GetConditionValues(ctx context.Context) (conditionValues map[string][]string) {
+	if ctx == nil {
+		return conditionValues
+	}
+	r, ok := ctx.Value(contextConditionValuesKey).(map[string][]string)
+	if ok {
+		return r
+	}
+	return conditionValues
+}
+
+// Key used for Get/SetClaims
+type contextClaimsKeyType string
+
+const contextClaimsKey = contextClaimsKeyType("minioclaims")
+
+// SetClaims sets Claims in the context.
+func SetClaims(ctx context.Context, claims map[string]interface{}) context.Context {
+	if ctx == nil {
+		return nil
+	}
+	return context.WithValue(ctx, contextClaimsKey, claims)
+}
+
+// GetClaims returns Claims if set.
+func GetClaims(ctx context.Context) (claims map[string]interface{}) {
+	if ctx == nil {
+		return claims
+	}
+	r, ok := ctx.Value(contextClaimsKey).(map[string]interface{})
+	if ok {
+		return r
+	}
+	return claims
 }
