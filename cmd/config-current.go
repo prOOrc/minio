@@ -37,6 +37,7 @@ import (
 	xtls "github.com/minio/minio/internal/config/identity/tls"
 	"github.com/minio/minio/internal/config/notify"
 	"github.com/minio/minio/internal/config/policy/opa"
+	"github.com/minio/minio/internal/config/redis"
 	"github.com/minio/minio/internal/config/scanner"
 	"github.com/minio/minio/internal/config/storageclass"
 	"github.com/minio/minio/internal/config/subnet"
@@ -50,6 +51,7 @@ import (
 func initHelp() {
 	kvs := map[string]config.KVS{
 		config.EtcdSubSys:           etcd.DefaultKVS,
+		config.RedisSubSys:          redis.DefaultKVS,
 		config.CacheSubSys:          cache.DefaultKVS,
 		config.CompressionSubSys:    compress.DefaultKVS,
 		config.IdentityLDAPSubSys:   xldap.DefaultKVS,
@@ -91,6 +93,10 @@ func initHelp() {
 		},
 		config.HelpKV{
 			Key:         config.EtcdSubSys,
+			Description: "federate multiple clusters for IAM and Bucket DNS",
+		},
+		config.HelpKV{
+			Key:         config.RedisSubSys,
 			Description: "federate multiple clusters for IAM and Bucket DNS",
 		},
 		config.HelpKV{
@@ -210,6 +216,7 @@ func initHelp() {
 		config.APISubSys:            api.Help,
 		config.StorageClassSubSys:   storageclass.Help,
 		config.EtcdSubSys:           etcd.Help,
+		config.RedisSubSys:          redis.Help,
 		config.CacheSubSys:          cache.Help,
 		config.CompressionSubSys:    compress.Help,
 		config.HealSubSys:           heal.Help,
@@ -312,6 +319,22 @@ func validateSubSysConfig(s config.Config, subSys string, objAPI ObjectLayer) er
 				return err
 			}
 			etcdClnt.Close()
+		}
+	case config.RedisSubSys:
+		redisCfg, err := redis.LookupConfig(s[config.RedisSubSys][config.Default], globalRootCAs)
+		if err != nil {
+			return err
+		}
+		if redisCfg.Enabled {
+			redisClnt, err := redis.New(redisCfg)
+			if err != nil {
+				return err
+			}
+			_, err = redisClnt.Ping(GlobalContext).Result()
+			redisClnt.Close()
+			if err != nil {
+				return err
+			}
 		}
 	case config.IdentityOpenIDSubSys:
 		if _, err := openid.LookupConfig(s[config.IdentityOpenIDSubSys][config.Default],
@@ -457,6 +480,28 @@ func lookupConfigs(s config.Config, objAPI ObjectLayer) {
 						logger.LogIf(ctx, fmt.Errorf("Unable to initialize DNS config for %s: %w",
 							globalDomainNames, err))
 					}
+				}
+			}
+		}
+	}
+
+	redisCfg, err := redis.LookupConfig(s[config.RedisSubSys][config.Default], globalRootCAs)
+	if err != nil {
+		if globalIsGateway {
+			logger.FatalIf(err, "Unable to initialize redis config")
+		} else {
+			logger.LogIf(ctx, fmt.Errorf("Unable to initialize redis config: %w", err))
+		}
+	}
+
+	if redisCfg.Enabled {
+		if globalRedisClient == nil {
+			globalRedisClient, err = redis.New(redisCfg)
+			if err != nil {
+				if globalIsGateway {
+					logger.FatalIf(err, "Unable to initialize redis config")
+				} else {
+					logger.LogIf(ctx, fmt.Errorf("Unable to initialize redis config: %w", err))
 				}
 			}
 		}

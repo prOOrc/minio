@@ -75,6 +75,7 @@ require (
 	github.com/prometheus/client_model v0.4.0
 	github.com/prometheus/procfs v0.9.0
 	github.com/pyroscope-io/client v0.7.0
+	github.com/redis/go-redis/v9 v9.0.2
 	github.com/rs/cors v1.7.0
 	github.com/rs/dnscache v0.0.0-20211102005908-e0241e321417
 	github.com/secure-io/sio-go v0.3.1
@@ -262,7 +263,6 @@ require (
 	github.com/qingstor/qingstor-sdk-go/v4 v4.4.0 // indirect
 	github.com/qiniu/go-sdk/v7 v7.15.0 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475 // indirect
-	github.com/redis/go-redis/v9 v9.0.2 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20200410134404-eec4a21b6bb0 // indirect
 	github.com/rivo/uniseg v0.2.0 // indirect
 	github.com/rjeczalik/notify v0.9.2 // indirect

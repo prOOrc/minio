@@ -159,8 +159,16 @@ func init() {
 const consolePrefix = "CONSOLE_"
 
 func minioConfigToConsoleFeatures() {
-	os.Setenv("CONSOLE_PBKDF_SALT", globalDeploymentID)
-	os.Setenv("CONSOLE_PBKDF_PASSPHRASE", globalDeploymentID)
+	if value := env.Get("MINIO_PBKDF_SALT", ""); value != "" {
+		os.Setenv("CONSOLE_PBKDF_SALT", value)
+	} else {
+		os.Setenv("CONSOLE_PBKDF_SALT", globalDeploymentID)
+	}
+	if value := env.Get("MINIO_PBKDF_PASSPHRASE", ""); value != "" {
+		os.Setenv("CONSOLE_PBKDF_PASSPHRASE", value)
+	} else {
+		os.Setenv("CONSOLE_PBKDF_PASSPHRASE", globalDeploymentID)
+	}
 	if globalMinioEndpoint != "" {
 		os.Setenv("CONSOLE_MINIO_SERVER", globalMinioEndpoint)
 	} else {

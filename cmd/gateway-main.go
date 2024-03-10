@@ -304,7 +304,7 @@ func StartGateway(ctx *cli.Context, gw Gateway) {
 	globalObjectAPI = newObject
 	globalObjLayerMutex.Unlock()
 
-	go globalIAMSys.Init(GlobalContext, newObject, globalEtcdClient, globalRefreshIAMInterval)
+	go globalIAMSys.Init(GlobalContext, newObject, globalEtcdClient, globalRedisClient, globalRefreshIAMInterval)
 
 	if gatewayName == NASBackendGateway {
 		buckets, err := newObject.ListBuckets(GlobalContext)

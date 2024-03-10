@@ -34,6 +34,7 @@ import (
 	xldap "github.com/minio/minio/internal/config/identity/ldap"
 	"github.com/minio/minio/internal/config/identity/openid"
 	"github.com/minio/minio/internal/config/policy/opa"
+	"github.com/minio/minio/internal/config/redis"
 	"github.com/minio/minio/internal/config/storageclass"
 	"github.com/minio/minio/internal/logger"
 	iampolicy "github.com/minio/pkg/iam/policy"
@@ -431,6 +432,8 @@ func (a adminAPIHandlers) GetConfigHandler(w http.ResponseWriter, r *http.Reques
 			switch hkv.Key {
 			case config.EtcdSubSys:
 				off = !etcd.Enabled(kv)
+			case config.RedisSubSys:
+				off = !redis.Enabled(kv)
 			case config.CacheSubSys:
 				off = !cache.Enabled(kv)
 			case config.StorageClassSubSys:

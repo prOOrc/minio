@@ -76,6 +76,7 @@ const (
 	SiteSubSys           = "site"
 	RegionSubSys         = "region"
 	EtcdSubSys           = "etcd"
+	RedisSubSys          = "redis"
 	StorageClassSubSys   = "storage_class"
 	APISubSys            = "api"
 	CompressionSubSys    = "compression"
@@ -133,6 +134,7 @@ var SubSystems = set.CreateStringSet(
 	SiteSubSys,
 	RegionSubSys,
 	EtcdSubSys,
+	RedisSubSys,
 	CacheSubSys,
 	APISubSys,
 	StorageClassSubSys,
@@ -177,6 +179,7 @@ var SubSystemsSingleTargets = set.CreateStringSet([]string{
 	SiteSubSys,
 	RegionSubSys,
 	EtcdSubSys,
+	RedisSubSys,
 	CacheSubSys,
 	APISubSys,
 	StorageClassSubSys,
