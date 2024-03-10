@@ -1748,9 +1748,10 @@ func (store *IAMStoreSys) LoadUser(ctx context.Context, accessKey string) {
 			} else {
 				// check for STS account
 				store.loadUser(ctx, accessKey, stsUser, cache.iamUsersMap)
-				if _, found = cache.iamUsersMap[accessKey]; found {
+				if sts, found := cache.iamUsersMap[accessKey]; found {
 					// Load mapped policy
 					store.loadMappedPolicy(ctx, accessKey, stsUser, false, cache.iamUserPolicyMap)
+					store.loadMappedPolicy(ctx, sts.ParentUser, stsUser, false, cache.iamUserPolicyMap)
 				}
 			}
 		}
