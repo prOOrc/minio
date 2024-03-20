@@ -599,6 +599,9 @@ func (sys *IAMSys) Init(ctx context.Context, objAPI ObjectLayer) {
 		// Migrate IAM configuration, if necessary.
 		if err := sys.doIAMConfigMigration(ctx); err != nil {
 			txnLk.Unlock()
+			if errors.Is(err, madmin.ErrMaliciousData) {
+				logger.Fatal(err, "Unable to read encrypted IAM configuration. Please check your credentials.")
+			}
 			if configRetriableErrors(err) {
 				logger.Info("Waiting for all MinIO IAM sub-system to be initialized.. possible cause (%v)", err)
 				continue
