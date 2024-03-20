@@ -21,6 +21,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"github.com/minio/minio/pkg/fips"
 	"math/rand"
 	"net"
 	"os"
@@ -40,9 +41,6 @@ import (
 	"github.com/minio/minio/pkg/certs"
 	"github.com/minio/minio/pkg/color"
 	"github.com/minio/minio/pkg/env"
-	"github.com/minio/minio/pkg/fips"
-	"github.com/minio/minio/pkg/madmin"
-	"github.com/minio/minio/pkg/sync/errgroup"
 )
 
 // ServerFlags - server command specific flags
@@ -190,13 +188,6 @@ func serverHandleEnvVars() {
 var globalHealStateLK sync.RWMutex
 
 func newAllSubsystems() {
-	if globalIsErasure {
-		globalHealStateLK.Lock()
-		// New global heal state
-		globalAllHealState = newHealState(true)
-		globalBackgroundHealState = newHealState(false)
-		globalHealStateLK.Unlock()
-	}
 
 	// Create new notification system and initialize notification targets
 	globalNotificationSys = NewNotificationSys(globalEndpoints)
@@ -222,26 +213,14 @@ func newAllSubsystems() {
 	globalPolicySys = NewPolicySys()
 
 	// Create new lifecycle system.
-	globalLifecycleSys = NewLifecycleSys()
+	//globalLifecycleSys = NewLifecycleSys()
 
 	// Create new bucket encryption subsystem
-	globalBucketSSEConfigSys = NewBucketSSEConfigSys()
+	//globalBucketSSEConfigSys = NewBucketSSEConfigSys()
 
 	// Create new bucket object lock subsystem
 	globalBucketObjectLockSys = NewBucketObjectLockSys()
 
-	// Create new bucket quota subsystem
-	globalBucketQuotaSys = NewBucketQuotaSys()
-
-	// Create new bucket versioning subsystem
-	if globalBucketVersioningSys == nil {
-		globalBucketVersioningSys = NewBucketVersioningSys()
-	} else {
-		globalBucketVersioningSys.Reset()
-	}
-
-	// Create new bucket replication subsytem
-	globalBucketTargetSys = NewBucketTargetSys()
 }
 
 func configRetriableErrors(err error) bool {
@@ -351,31 +330,6 @@ func initAllSubsystems(ctx context.Context, newObject ObjectLayer) (err error) {
 		return fmt.Errorf("Unable to list buckets to heal: %w", err)
 	}
 
-	if globalIsErasure {
-		if len(buckets) > 0 {
-			if len(buckets) == 1 {
-				logger.Info(fmt.Sprintf("Verifying if %d bucket is consistent across drives...", len(buckets)))
-			} else {
-				logger.Info(fmt.Sprintf("Verifying if %d buckets are consistent across drives...", len(buckets)))
-			}
-		}
-
-		// Limit to no more than 50 concurrent buckets.
-		g := errgroup.WithNErrs(len(buckets)).WithConcurrency(50)
-		ctx, cancel := g.WithCancelOnError(ctx)
-		defer cancel()
-		for index := range buckets {
-			index := index
-			g.Go(func() error {
-				_, berr := newObject.HealBucket(ctx, buckets[index].Name, madmin.HealOpts{Recreate: true})
-				return berr
-			}, index)
-		}
-		if err := g.WaitErr(); err != nil {
-			return fmt.Errorf("Unable to list buckets to heal: %w", err)
-		}
-	}
-
 	// Initialize config system.
 	if err = globalConfigSys.Init(newObject); err != nil {
 		if configRetriableErrors(err) {
@@ -398,7 +352,7 @@ func initAllSubsystems(ctx context.Context, newObject ObjectLayer) (err error) {
 	globalNotificationSys.Init(ctx, buckets, newObject)
 
 	// Initialize bucket targets sub-system.
-	globalBucketTargetSys.Init(ctx, buckets, newObject)
+	//globalBucketTargetSys.Init(ctx, buckets, newObject)
 
 	return nil
 }
@@ -613,26 +567,6 @@ func ServerMainForJFS(ctx *cli.Context, jfs ObjectLayer) {
 		return fmt.Sprintf("%s://%s", getURLScheme(globalIsTLS), net.JoinHostPort(host, globalMinioPort))
 	}()
 
-	// Is distributed setup, error out if no certificates are found for HTTPS endpoints.
-	if globalIsDistErasure {
-		if globalEndpoints.HTTPS() && !globalIsTLS {
-			logger.Fatal(config.ErrNoCertsAndHTTPSEndpoints(nil), "Unable to start the server")
-		}
-		if !globalEndpoints.HTTPS() && globalIsTLS {
-			logger.Fatal(config.ErrCertsAndHTTPEndpoints(nil), "Unable to start the server")
-		}
-	}
-
-	if !globalCLIContext.Quiet && !globalInplaceUpdateDisabled {
-		// Check for new updates from dl.min.io.
-		checkUpdate(getMinioMode())
-	}
-
-	if !globalActiveCred.IsValid() && globalIsDistErasure {
-		logger.Fatal(config.ErrEnvCredentialsMissingDistributed(nil),
-			"Unable to initialize the server in distributed mode")
-	}
-
 	// Set system resources to maximum.
 	setMaxResources()
 
@@ -657,37 +591,10 @@ func ServerMainForJFS(ctx *cli.Context, jfs ObjectLayer) {
 
 	setHTTPServer(httpServer)
 
-	if globalIsDistErasure && globalEndpoints.FirstLocal() {
-		for {
-			// Additionally in distributed setup, validate the setup and configuration.
-			err := verifyServerSystemConfig(GlobalContext, globalEndpoints)
-			if err == nil || errors.Is(err, context.Canceled) {
-				break
-			}
-			logger.LogIf(GlobalContext, err, "Unable to initialize distributed setup, retrying.. after 5 seconds")
-			select {
-			case <-GlobalContext.Done():
-				return
-			case <-time.After(500 * time.Millisecond):
-			}
-		}
-	}
-
-	//newObject, err := newObjectLayer(GlobalContext, globalEndpoints)
-	//if err != nil {
-	//	logFatalErrs(err, Endpoint{}, true)
-	//}
-
 	logger.SetDeploymentID(globalDeploymentID)
 
-	// Enable background operations for erasure coding
-	if globalIsErasure {
-		initAutoHeal(GlobalContext, jfs)
-		initBackgroundTransition(GlobalContext, jfs)
-	}
-
-	initBackgroundExpiry(GlobalContext, jfs)
-	initDataScanner(GlobalContext, jfs)
+	//initBackgroundExpiry(GlobalContext, jfs)
+	//initDataScanner(GlobalContext, jfs)
 
 	if err = initServer(GlobalContext, jfs); err != nil {
 		var cerr config.Err
@@ -703,9 +610,6 @@ func ServerMainForJFS(ctx *cli.Context, jfs ObjectLayer) {
 		}
 	}
 
-	if globalIsErasure { // to be done after config init
-		initBackgroundReplication(GlobalContext, jfs)
-	}
 	if globalCacheConfig.Enabled {
 		// initialize the new disk cache objects.
 		var cacheAPI CacheObjectLayer
