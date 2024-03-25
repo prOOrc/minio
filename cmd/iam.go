@@ -495,22 +495,12 @@ func (sys *IAMSys) Load(ctx context.Context, store IAMStorageAPI) error {
 	store.lock()
 	defer store.unlock()
 
-	for k, v := range iamPolicyDocsMap {
-		sys.iamPolicyDocsMap[k] = v
-	}
+	// apply all data in the configuration file to memory
+	sys.iamPolicyDocsMap = iamPolicyDocsMap
 
-	// Merge the new reloaded entries into global map.
-	// See issue https://github.com/minio/minio/issues/9651
-	// where the present list of entries on disk are not yet
-	// latest, there is a small window where this can make
-	// valid users invalid.
-	for k, v := range iamUsersMap {
-		sys.iamUsersMap[k] = v
-	}
+	sys.iamUsersMap = iamUsersMap
 
-	for k, v := range iamUserPolicyMap {
-		sys.iamUserPolicyMap[k] = v
-	}
+	sys.iamUserPolicyMap = iamUserPolicyMap
 
 	// purge any expired entries which became expired now.
 	var expiredEntries []string
@@ -543,14 +533,11 @@ func (sys *IAMSys) Load(ctx context.Context, store IAMStorageAPI) error {
 		}
 	}
 
-	for k, v := range iamGroupPolicyMap {
-		sys.iamGroupPolicyMap[k] = v
-	}
+	sys.iamGroupPolicyMap = iamGroupPolicyMap
 
-	for k, v := range iamGroupsMap {
-		sys.iamGroupsMap[k] = v
-	}
+	sys.iamGroupsMap = iamGroupsMap
 
+	sys.iamUserGroupMemberships = make(map[string]set.StringSet)
 	sys.buildUserGroupMemberships()
 	sys.storeFallback = false
 	return nil
