@@ -29,6 +29,7 @@ import (
 	"github.com/minio/minio/cmd/config/storageclass"
 	"github.com/minio/minio/cmd/logger"
 	"github.com/minio/minio/pkg/auth"
+	"github.com/minio/minio/pkg/event/target"
 	"github.com/minio/minio/pkg/quick"
 )
 
@@ -236,11 +237,23 @@ type configV6 struct {
 // Notifier represents collection of supported notification queues in version
 // 1 without NATS streaming.
 type notifierV1 struct {
+	AMQP          map[string]target.AMQPArgs          `json:"amqp"`
+	NATS          map[string]natsNotifyV1             `json:"nats"`
+	ElasticSearch map[string]target.ElasticsearchArgs `json:"elasticsearch"`
+	Redis         map[string]target.RedisArgs         `json:"redis"`
+	PostgreSQL    map[string]target.PostgreSQLArgs    `json:"postgresql"`
+	Kafka         map[string]target.KafkaArgs         `json:"kafka"`
 }
 
 // Notifier represents collection of supported notification queues in version 2
 // with NATS streaming but without webhook.
 type notifierV2 struct {
+	AMQP          map[string]target.AMQPArgs          `json:"amqp"`
+	NATS          map[string]target.NATSArgs          `json:"nats"`
+	ElasticSearch map[string]target.ElasticsearchArgs `json:"elasticsearch"`
+	Redis         map[string]target.RedisArgs         `json:"redis"`
+	PostgreSQL    map[string]target.PostgreSQLArgs    `json:"postgresql"`
+	Kafka         map[string]target.KafkaArgs         `json:"kafka"`
 }
 
 // configV7 server configuration version '7'.
@@ -358,6 +371,15 @@ type serverConfigV12 struct {
 }
 
 type notifierV3 struct {
+	AMQP          map[string]target.AMQPArgs          `json:"amqp"`
+	Elasticsearch map[string]target.ElasticsearchArgs `json:"elasticsearch"`
+	Kafka         map[string]target.KafkaArgs         `json:"kafka"`
+	MQTT          map[string]target.MQTTArgs          `json:"mqtt"`
+	MySQL         map[string]target.MySQLArgs         `json:"mysql"`
+	NATS          map[string]target.NATSArgs          `json:"nats"`
+	PostgreSQL    map[string]target.PostgreSQLArgs    `json:"postgresql"`
+	Redis         map[string]target.RedisArgs         `json:"redis"`
+	Webhook       map[string]target.WebhookArgs       `json:"webhook"`
 }
 
 // serverConfigV13 server configuration version '13' which is like
