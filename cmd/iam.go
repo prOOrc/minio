@@ -498,6 +498,11 @@ func (sys *IAMSys) Load(ctx context.Context, store IAMStorageAPI) error {
 	for k, v := range iamPolicyDocsMap {
 		sys.iamPolicyDocsMap[k] = v
 	}
+	for k := range sys.iamPolicyDocsMap {
+		if _, ok := iamPolicyDocsMap[k]; !ok {
+			delete(sys.iamPolicyDocsMap, k)
+		}
+	}
 
 	// Merge the new reloaded entries into global map.
 	// See issue https://github.com/minio/minio/issues/9651
@@ -507,9 +512,20 @@ func (sys *IAMSys) Load(ctx context.Context, store IAMStorageAPI) error {
 	for k, v := range iamUsersMap {
 		sys.iamUsersMap[k] = v
 	}
+	for k := range sys.iamUsersMap {
+		if _, ok := iamUsersMap[k]; !ok {
+			delete(sys.iamUsersMap, k)
+		}
+	}
 
 	for k, v := range iamUserPolicyMap {
 		sys.iamUserPolicyMap[k] = v
+	}
+
+	for k := range sys.iamUserPolicyMap {
+		if _, ok := iamUserPolicyMap[k]; !ok {
+			delete(sys.iamUserPolicyMap, k)
+		}
 	}
 
 	// purge any expired entries which became expired now.
@@ -546,12 +562,35 @@ func (sys *IAMSys) Load(ctx context.Context, store IAMStorageAPI) error {
 	for k, v := range iamGroupPolicyMap {
 		sys.iamGroupPolicyMap[k] = v
 	}
+	for k := range sys.iamGroupPolicyMap {
+		if _, ok := iamGroupPolicyMap[k]; !ok {
+			delete(sys.iamGroupPolicyMap, k)
+		}
+	}
+
+	// Updating the group memberships cache happens in two steps:
+	//
+	// 1. Remove the group from each user's list of memberships.
+	// 2. Add the group to each member's list of memberships.
+	//
+	// This ensures that regardless of members being added or
+	// removed, the cache stays current.
 
 	for k, v := range iamGroupsMap {
 		sys.iamGroupsMap[k] = v
+		sys.removeGroupFromMembershipsMap(k)
+
+		gi := sys.iamGroupsMap[k]
+		sys.updateGroupMembershipsMap(k, &gi)
 	}
 
-	sys.buildUserGroupMemberships()
+	for k := range sys.iamGroupsMap {
+		if _, ok := iamGroupsMap[k]; !ok {
+			sys.removeGroupFromMembershipsMap(k)
+			delete(sys.iamGroupsMap, k)
+		}
+	}
+
 	sys.storeFallback = false
 	return nil
 }
