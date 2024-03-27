@@ -441,6 +441,18 @@ func (sys *IAMSys) Initialized() bool {
 	return sys.store != nil
 }
 
+const (
+	userMapPrefix        = "user:"
+	groupMapPrefix       = "group:"
+	userPolicyMapPrefix  = "userPolicy:"
+	groupPolicyMapPrefix = "groupPolicy:"
+	policyDocsMapPrefix  = "policyDocs:"
+)
+
+var delayedDeletedItem = make(map[string]int)
+
+const maxDelayCycle = 2
+
 // Load - loads all credentials
 func (sys *IAMSys) Load(ctx context.Context, store IAMStorageAPI) error {
 	iamUsersMap := make(map[string]auth.Credentials)
@@ -500,6 +512,17 @@ func (sys *IAMSys) Load(ctx context.Context, store IAMStorageAPI) error {
 		sys.iamPolicyDocsMap[k] = v
 	}
 
+	for k := range sys.iamPolicyDocsMap {
+		if _, ok := iamPolicyDocsMap[k]; !ok {
+			delayKey := policyDocsMapPrefix + k
+			delayedDeletedItem[delayKey]++
+			if delayedDeletedItem[delayKey] >= maxDelayCycle {
+				delete(delayedDeletedItem, delayKey)
+				delete(sys.iamPolicyDocsMap, k)
+			}
+		}
+	}
+
 	// Merge the new reloaded entries into global map.
 	// See issue https://github.com/minio/minio/issues/9651
 	// where the present list of entries on disk are not yet
@@ -509,8 +532,30 @@ func (sys *IAMSys) Load(ctx context.Context, store IAMStorageAPI) error {
 		sys.iamUsersMap[k] = v
 	}
 
+	for k := range sys.iamUsersMap {
+		if _, ok := iamUsersMap[k]; !ok {
+			delayKey := userMapPrefix + k
+			delayedDeletedItem[delayKey]++
+			if delayedDeletedItem[delayKey] >= maxDelayCycle {
+				delete(delayedDeletedItem, delayKey)
+				delete(sys.iamUsersMap, k)
+			}
+		}
+	}
+
 	for k, v := range iamUserPolicyMap {
 		sys.iamUserPolicyMap[k] = v
+	}
+
+	for k := range sys.iamUserPolicyMap {
+		if _, ok := iamUserPolicyMap[k]; !ok {
+			delayKey := userPolicyMapPrefix + k
+			delayedDeletedItem[delayKey]++
+			if delayedDeletedItem[delayKey] >= maxDelayCycle {
+				delete(delayedDeletedItem, delayKey)
+				delete(sys.iamUserPolicyMap, k)
+			}
+		}
 	}
 
 	// purge any expired entries which became expired now.
@@ -548,8 +593,31 @@ func (sys *IAMSys) Load(ctx context.Context, store IAMStorageAPI) error {
 		sys.iamGroupPolicyMap[k] = v
 	}
 
+	for k := range sys.iamGroupPolicyMap {
+		if _, ok := iamGroupPolicyMap[k]; !ok {
+			delayKey := groupPolicyMapPrefix + k
+			delayedDeletedItem[delayKey]++
+			if delayedDeletedItem[delayKey] >= maxDelayCycle {
+				delete(delayedDeletedItem, delayKey)
+				delete(sys.iamGroupPolicyMap, k)
+			}
+		}
+	}
+
 	for k, v := range iamGroupsMap {
 		sys.iamGroupsMap[k] = v
+	}
+
+	for k := range sys.iamGroupsMap {
+		if _, ok := iamGroupsMap[k]; !ok {
+			delayKey := groupMapPrefix + k
+			delayedDeletedItem[delayKey]++
+			if delayedDeletedItem[delayKey] >= maxDelayCycle {
+				delete(delayedDeletedItem, delayKey)
+				delete(sys.iamGroupsMap, k)
+				sys.removeGroupFromMembershipsMap(k)
+			}
+		}
 	}
 
 	sys.buildUserGroupMemberships()
