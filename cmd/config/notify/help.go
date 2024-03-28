@@ -73,33 +73,6 @@ var (
 		},
 	}
 
-	HelpAMQP = config.HelpKVS{
-		config.HelpKV{
-			Key:         config.Comment,
-			Description: config.DefaultComment,
-			Optional:    true,
-			Type:        "sentence",
-		},
-	}
-
-	HelpKafka = config.HelpKVS{
-		config.HelpKV{
-			Key:         config.Comment,
-			Description: config.DefaultComment,
-			Optional:    true,
-			Type:        "sentence",
-		},
-	}
-
-	HelpMQTT = config.HelpKVS{
-		config.HelpKV{
-			Key:         config.Comment,
-			Description: config.DefaultComment,
-			Optional:    true,
-			Type:        "sentence",
-		},
-	}
-
 	HelpPostgres = config.HelpKVS{
 		config.HelpKV{
 			Key:         target.PostgresConnectionString,
@@ -182,33 +155,6 @@ var (
 			Description: "To set the maximum number of open connections to the database. The value is set to `2` by default.",
 			Optional:    true,
 			Type:        "number",
-		},
-	}
-
-	HelpNATS = config.HelpKVS{
-		config.HelpKV{
-			Key:         config.Comment,
-			Description: config.DefaultComment,
-			Optional:    true,
-			Type:        "sentence",
-		},
-	}
-
-	HelpNSQ = config.HelpKVS{
-		config.HelpKV{
-			Key:         config.Comment,
-			Description: config.DefaultComment,
-			Optional:    true,
-			Type:        "sentence",
-		},
-	}
-
-	HelpES = config.HelpKVS{
-		config.HelpKV{
-			Key:         config.Comment,
-			Description: config.DefaultComment,
-			Optional:    true,
-			Type:        "sentence",
 		},
 	}
 
