@@ -24,7 +24,6 @@ import (
 	"os"
 	"path"
 	"strings"
-	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -38,30 +37,32 @@ import (
 
 // IAMObjectStore implements IAMStorageAPI
 type IAMObjectStore struct {
-	// Protect assignment to objAPI
-	sync.RWMutex
-
+	rwLock RWLocker
 	objAPI ObjectLayer
 }
 
+func (iamOS *IAMObjectStore) newNSLock(bucket string, objects ...string) RWLocker {
+	return iamOS.objAPI.NewNSLock(bucket, objects...)
+}
+
 func newIAMObjectStore(objAPI ObjectLayer) *IAMObjectStore {
-	return &IAMObjectStore{objAPI: objAPI}
+	return &IAMObjectStore{objAPI: objAPI, rwLock: objAPI.NewNSLock(MinioMetaBucket, MinioMetaLockFile)}
 }
 
 func (iamOS *IAMObjectStore) lock() {
-	iamOS.Lock()
+	iamOS.rwLock.GetLock(context.Background(), globalGetLockConfigTimeout)
 }
 
 func (iamOS *IAMObjectStore) unlock() {
-	iamOS.Unlock()
+	iamOS.rwLock.Unlock()
 }
 
 func (iamOS *IAMObjectStore) rlock() {
-	iamOS.RLock()
+	iamOS.rwLock.GetRLock(context.Background(), globalGetLockConfigTimeout)
 }
 
 func (iamOS *IAMObjectStore) runlock() {
-	iamOS.RUnlock()
+	iamOS.rwLock.Unlock()
 }
 
 // Migrate users directory in a single scan.
@@ -278,29 +279,34 @@ func (iamOS *IAMObjectStore) loadPolicyDocs(ctx context.Context, m map[string]ia
 	return nil
 }
 
-func (iamOS *IAMObjectStore) loadUser(ctx context.Context, user string, userType IAMUserType, m map[string]auth.Credentials) error {
+func (iamOS *IAMObjectStore) getUserCredentials(ctx context.Context, user string, userType IAMUserType) (auth.Credentials, error) {
 	var u UserIdentity
 	err := iamOS.loadIAMConfig(ctx, &u, getUserIdentityPath(user, userType))
 	if err != nil {
-		if err == errConfigNotFound {
-			return errNoSuchUser
+		if errors.Is(err, errConfigNotFound) {
+			return auth.Credentials{}, errNoSuchUser
 		}
-		return err
+		return auth.Credentials{}, err
 	}
 
 	if u.Credentials.IsExpired() {
 		// Delete expired identity - ignoring errors here.
 		iamOS.deleteIAMConfig(ctx, getUserIdentityPath(user, userType))
 		iamOS.deleteIAMConfig(ctx, getMappedPolicyPath(user, userType, false))
-		return nil
+		return auth.Credentials{}, nil
 	}
 
 	if u.Credentials.AccessKey == "" {
 		u.Credentials.AccessKey = user
 	}
-
-	m[user] = u.Credentials
-	return nil
+	return u.Credentials, nil
+}
+func (iamOS *IAMObjectStore) loadUser(ctx context.Context, user string, userType IAMUserType, m map[string]auth.Credentials) error {
+	credentials, err := iamOS.getUserCredentials(ctx, user, userType)
+	if err == nil {
+		m[user] = credentials
+	}
+	return err
 }
 
 func (iamOS *IAMObjectStore) loadUsers(ctx context.Context, userType IAMUserType, m map[string]auth.Credentials) error {
@@ -320,20 +326,28 @@ func (iamOS *IAMObjectStore) loadUsers(ctx context.Context, userType IAMUserType
 		}
 
 		userName := path.Dir(item.Item)
-		if err := iamOS.loadUser(ctx, userName, userType, m); err != nil && err != errNoSuchUser {
+		if err := iamOS.loadUser(ctx, userName, userType, m); err != nil && !errors.Is(err, errNoSuchUser) {
 			return err
 		}
 	}
 	return nil
 }
 
-func (iamOS *IAMObjectStore) loadGroup(ctx context.Context, group string, m map[string]GroupInfo) error {
+func (iamOS *IAMObjectStore) getGroupInfo(ctx context.Context, group string) (GroupInfo, error) {
 	var g GroupInfo
 	err := iamOS.loadIAMConfig(ctx, &g, getGroupInfoPath(group))
 	if err != nil {
-		if err == errConfigNotFound {
-			return errNoSuchGroup
+		if errors.Is(err, errConfigNotFound) {
+			return GroupInfo{}, errNoSuchGroup
 		}
+		return GroupInfo{}, err
+	}
+	return g, err
+}
+
+func (iamOS *IAMObjectStore) loadGroup(ctx context.Context, group string, m map[string]GroupInfo) error {
+	g, err := iamOS.getGroupInfo(ctx, group)
+	if err != nil {
 		return err
 	}
 	m[group] = g
@@ -347,26 +361,30 @@ func (iamOS *IAMObjectStore) loadGroups(ctx context.Context, m map[string]GroupI
 		}
 
 		group := path.Dir(item.Item)
-		if err := iamOS.loadGroup(ctx, group, m); err != nil && err != errNoSuchGroup {
+		if err := iamOS.loadGroup(ctx, group, m); err != nil && !errors.Is(err, errNoSuchGroup) {
 			return err
 		}
 	}
 	return nil
 }
 
-func (iamOS *IAMObjectStore) loadMappedPolicy(ctx context.Context, name string, userType IAMUserType, isGroup bool,
-	m map[string]MappedPolicy) error {
-
+func (iamOS *IAMObjectStore) getMappedPolicy(ctx context.Context, name string, userType IAMUserType, isGroup bool) (MappedPolicy, error) {
 	var p MappedPolicy
-	err := iamOS.loadIAMConfig(ctx, &p, getMappedPolicyPath(name, userType, isGroup))
-	if err != nil {
-		if err == errConfigNotFound {
-			return errNoSuchPolicy
+	if err := iamOS.loadIAMConfig(ctx, &p, getMappedPolicyPath(name, userType, isGroup)); err != nil {
+		if errors.Is(err, errConfigNotFound) {
+			return MappedPolicy{}, errNoSuchPolicy
 		}
-		return err
+		return MappedPolicy{}, err
 	}
-	m[name] = p
-	return nil
+	return p, nil
+}
+
+func (iamOS *IAMObjectStore) loadMappedPolicy(ctx context.Context, name string, userType IAMUserType, isGroup bool, m map[string]MappedPolicy) error {
+	p, err := iamOS.getMappedPolicy(ctx, name, userType, isGroup)
+	if err == nil {
+		m[name] = p
+	}
+	return err
 }
 
 func (iamOS *IAMObjectStore) loadMappedPolicies(ctx context.Context, userType IAMUserType, isGroup bool, m map[string]MappedPolicy) error {
@@ -420,7 +438,7 @@ func (iamOS *IAMObjectStore) saveGroupInfo(ctx context.Context, name string, gi 
 
 func (iamOS *IAMObjectStore) deletePolicyDoc(ctx context.Context, name string) error {
 	err := iamOS.deleteIAMConfig(ctx, getPolicyDocPath(name))
-	if err == errConfigNotFound {
+	if errors.Is(err, errConfigNotFound) {
 		err = errNoSuchPolicy
 	}
 	return err
@@ -428,7 +446,7 @@ func (iamOS *IAMObjectStore) deletePolicyDoc(ctx context.Context, name string) e
 
 func (iamOS *IAMObjectStore) deleteMappedPolicy(ctx context.Context, name string, userType IAMUserType, isGroup bool) error {
 	err := iamOS.deleteIAMConfig(ctx, getMappedPolicyPath(name, userType, isGroup))
-	if err == errConfigNotFound {
+	if errors.Is(err, errConfigNotFound) {
 		err = errNoSuchPolicy
 	}
 	return err
@@ -436,7 +454,7 @@ func (iamOS *IAMObjectStore) deleteMappedPolicy(ctx context.Context, name string
 
 func (iamOS *IAMObjectStore) deleteUserIdentity(ctx context.Context, name string, userType IAMUserType) error {
 	err := iamOS.deleteIAMConfig(ctx, getUserIdentityPath(name, userType))
-	if err == errConfigNotFound {
+	if errors.Is(err, errConfigNotFound) {
 		err = errNoSuchUser
 	}
 	return err
