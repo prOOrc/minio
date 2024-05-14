@@ -81,7 +81,10 @@ func (a adminAPIHandlers) DelConfigKVHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	globalIAMSys.store.lock()
+	if err := globalIAMSys.store.lock(); err != nil {
+		writeErrorResponseJSON(ctx, w, toAdminAPIErr(ctx, err), r.URL)
+		return
+	}
 	defer globalIAMSys.store.unlock()
 	cfg, err := readServerConfig(ctx, objectAPI)
 	if err != nil {
@@ -125,7 +128,10 @@ func (a adminAPIHandlers) SetConfigKVHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	globalIAMSys.store.lock()
+	if err := globalIAMSys.store.lock(); err != nil {
+		writeErrorResponseJSON(ctx, w, toAdminAPIErr(ctx, err), r.URL)
+		return
+	}
 	defer globalIAMSys.store.unlock()
 	cfg, err := readServerConfig(ctx, objectAPI)
 	if err != nil {
@@ -268,7 +274,10 @@ func (a adminAPIHandlers) RestoreConfigHistoryKVHandler(w http.ResponseWriter, r
 		return
 	}
 
-	globalIAMSys.store.lock()
+	if err := globalIAMSys.store.lock(); err != nil {
+		writeErrorResponseJSON(ctx, w, toAdminAPIErr(ctx, err), r.URL)
+		return
+	}
 	defer globalIAMSys.store.unlock()
 	cfg, err := readServerConfig(ctx, objectAPI)
 	if err != nil {
@@ -398,7 +407,10 @@ func (a adminAPIHandlers) SetConfigHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	globalIAMSys.store.lock()
+	if err := globalIAMSys.store.lock(); err != nil {
+		writeErrorResponseJSON(ctx, w, toAdminAPIErr(ctx, err), r.URL)
+		return
+	}
 	defer globalIAMSys.store.unlock()
 	// Update the actual server config on disk.
 	if err = saveServerConfig(ctx, objectAPI, cfg); err != nil {
