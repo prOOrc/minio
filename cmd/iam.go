@@ -241,10 +241,10 @@ type options struct {
 
 // IAMStorageAPI defines an interface for the IAM persistence layer
 type IAMStorageAPI interface {
-	lock()
+	lock() error
 	unlock()
 
-	rlock()
+	rlock() error
 	runlock()
 
 	migrateBackendFormat(context.Context) error
@@ -465,7 +465,9 @@ func (sys *IAMSys) Load(ctx context.Context, store IAMStorageAPI) error {
 	iamGroupPolicyMap := make(map[string]MappedPolicy)
 	iamPolicyDocsMap := make(map[string]iampolicy.Policy)
 
-	store.rlock()
+	if err := store.rlock(); err != nil {
+		return err
+	}
 	defer store.runlock()
 
 	isMinIOUsersSys := sys.usersSysType == MinIOUsersSysType
@@ -647,7 +649,9 @@ func (sys *IAMSys) DeletePolicy(policyName string) error {
 		return errInvalidArgument
 	}
 
-	sys.store.lock()
+	if err := sys.store.lock(); err != nil {
+		return err
+	}
 	defer sys.store.unlock()
 
 	err := sys.store.deletePolicyDoc(context.Background(), policyName)
@@ -762,7 +766,9 @@ func (sys *IAMSys) SetPolicy(policyName string, p iampolicy.Policy) error {
 		return errInvalidArgument
 	}
 
-	sys.store.lock()
+	if err := sys.store.lock(); err != nil {
+		return err
+	}
 	defer sys.store.unlock()
 
 	if err := sys.loadPolicyDocs(); err != nil {
@@ -802,7 +808,9 @@ func (sys *IAMSys) DeleteUser(accessKey string) error {
 	}
 
 	// Next we can remove the user from memory and IAM store
-	sys.store.lock()
+	if err := sys.store.lock(); err != nil {
+		return err
+	}
 	defer sys.store.unlock()
 
 	sys.Lock()
@@ -870,7 +878,9 @@ func (sys *IAMSys) SetTempUser(accessKey string, cred auth.Credentials, policyNa
 
 	ttl := int64(cred.Expiration.Sub(UTCNow()).Seconds())
 
-	sys.store.lock()
+	if err := sys.store.lock(); err != nil {
+		return err
+	}
 	defer sys.store.unlock()
 
 	// If OPA is not set we honor any policy claims for this
@@ -1045,7 +1055,9 @@ func (sys *IAMSys) SetUserStatus(accessKey string, status madmin.AccountStatus) 
 		return errInvalidArgument
 	}
 
-	sys.store.lock()
+	if err := sys.store.lock(); err != nil {
+		return err
+	}
 	defer sys.store.unlock()
 	if err := sys.LoadUser(accessKey, regularUser); err != nil {
 		return err
@@ -1114,7 +1126,9 @@ func (sys *IAMSys) NewServiceAccount(ctx context.Context, parentUser string, gro
 		return auth.Credentials{}, errIAMActionNotAllowed
 	}
 
-	sys.store.lock()
+	if err := sys.store.lock(); err != nil {
+		return auth.Credentials{}, err
+	}
 	defer sys.store.unlock()
 	if err := sys.LoadAllTypeUsers(); err != nil {
 		return auth.Credentials{}, err
@@ -1202,7 +1216,9 @@ func (sys *IAMSys) UpdateServiceAccount(ctx context.Context, accessKey string, o
 	}
 
 	// lock disk config
-	sys.store.lock()
+	if err := sys.store.lock(); err != nil {
+		return err
+	}
 	defer sys.store.unlock()
 
 	if err := sys.LoadUser(accessKey, srvAccUser); err != nil {
@@ -1334,7 +1350,9 @@ func (sys *IAMSys) DeleteServiceAccount(ctx context.Context, accessKey string) e
 		return errServerNotInitialized
 	}
 
-	sys.store.lock()
+	if err := sys.store.lock(); err != nil {
+		return err
+	}
 	defer sys.store.unlock()
 
 	sys.Lock()
@@ -1371,7 +1389,9 @@ func (sys *IAMSys) CreateUser(accessKey string, uinfo madmin.UserInfo) error {
 		return errIAMActionNotAllowed
 	}
 
-	sys.store.lock()
+	if err := sys.store.lock(); err != nil {
+		return err
+	}
 	defer sys.store.unlock()
 	if err := sys.LoadAllTypeUsers(); err != nil {
 		return err
@@ -1425,7 +1445,9 @@ func (sys *IAMSys) SetUserSecretKey(accessKey string, secretKey string) error {
 		return errIAMActionNotAllowed
 	}
 
-	sys.store.lock()
+	if err := sys.store.lock(); err != nil {
+		return err
+	}
 	defer sys.store.unlock()
 	if err := sys.LoadUser(accessKey, regularUser); err != nil {
 		return err
@@ -1567,7 +1589,9 @@ func (sys *IAMSys) AddUsersToGroup(group string, members []string) error {
 		return errIAMActionNotAllowed
 	}
 
-	sys.store.lock()
+	if err := sys.store.lock(); err != nil {
+		return err
+	}
 	defer sys.store.unlock()
 
 	if err := sys.LoadAllTypeUsers(); err != nil {
@@ -1640,7 +1664,9 @@ func (sys *IAMSys) RemoveUsersFromGroup(group string, members []string) error {
 	}
 
 	// lock all write config action
-	sys.store.lock()
+	if err := sys.store.lock(); err != nil {
+		return err
+	}
 	defer sys.store.unlock()
 
 	// update user cache
@@ -1737,7 +1763,9 @@ func (sys *IAMSys) SetGroupStatus(group string, enabled bool) error {
 		return errInvalidArgument
 	}
 
-	sys.store.lock()
+	if err := sys.store.lock(); err != nil {
+		return err
+	}
 	defer sys.store.unlock()
 
 	if err := sys.LoadGroup(group); err != nil {
@@ -1828,7 +1856,9 @@ func (sys *IAMSys) PolicyDBSet(name, policy string, isGroup bool) error {
 		return errServerNotInitialized
 	}
 
-	sys.store.lock()
+	if err := sys.store.lock(); err != nil {
+		return err
+	}
 	defer sys.store.unlock()
 
 	if sys.usersSysType == LDAPUsersSysType {
