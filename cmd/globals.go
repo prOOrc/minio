@@ -180,7 +180,6 @@ var (
 	globalConfigTargetList *event.TargetList
 	// globalEnvTargetList has list of targets configured via env.
 	globalEnvTargetList *event.TargetList
-	globalNotificationSendToAll = false
 
 	globalBucketMetadataSys *BucketMetadataSys
 	globalBucketMonitor     *bandwidth.Monitor

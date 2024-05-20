@@ -61,8 +61,8 @@ const (
 	EnvRootDiskThresholdSize   = "MINIO_ROOTDISK_THRESHOLD_SIZE"
 
 	EnvUpdate = "MINIO_UPDATE"
-	
-	EnvNotifySendToAll = "MINIO_NOTIFY_SEND_TO_ALL"
+
+	EnvNotifyEvent    = "MINIO_NOTIFY_EVENT"
 
 	EnvKMSSecretKey     = "MINIO_KMS_SECRET_KEY"
 	EnvKMSSecretKeyFile = "MINIO_KMS_SECRET_KEY_FILE"

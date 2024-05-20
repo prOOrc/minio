@@ -20,12 +20,15 @@ package event
 import (
 	"encoding/xml"
 	"errors"
+	"fmt"
 	"io"
 	"reflect"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/minio/minio-go/v7/pkg/set"
+	"github.com/minio/minio/internal/config"
+	"github.com/minio/pkg/env"
 )
 
 // ValidateFilterRuleValue - checks if given value is filter rule value or not.
@@ -323,4 +326,35 @@ func ParseConfig(reader io.Reader, region string, targetList *TargetList) (*Conf
 		config.XMLNS = "http://s3.amazonaws.com/doc/2006-03-01/"
 	}
 	return &config, nil
+}
+
+func GetRulesMapConfigFromEnv() (RulesMap, error) {
+	rulesMap := make(RulesMap)
+	envs := env.List(config.EnvNotifyEvent + config.Default)
+	for _, envKey := range envs {
+		targetAndID := strings.TrimPrefix(envKey, config.EnvNotifyEvent+config.Default)
+		targetAndIDParts := strings.SplitN(targetAndID, config.Default, 2)
+		if len(targetAndIDParts) != 2 {
+			return rulesMap, fmt.Errorf("invalid TargetID format '%v'", targetAndID)
+		}
+		targetName := strings.ToLower(targetAndIDParts[0])
+		targetID := targetAndIDParts[1]
+
+		eventsEnv := env.Get(envKey, "")
+		if len(eventsEnv) == 0 {
+			return rulesMap, fmt.Errorf("'%s' cannot be empty", envKey)
+		}
+		events := strings.Split(eventsEnv, config.ValueSeparator)
+		eventNames := make([]Name, len(events))
+		for i, eventString := range events {
+			eventName, err := ParseName(eventString)
+			if err != nil {
+				return rulesMap, err
+			}
+			eventNames[i] = eventName
+		}
+		r := NewRulesMap(eventNames, "", TargetID{ID: targetID, Name: targetName})
+		rulesMap.Add(r)
+	}
+	return rulesMap, nil
 }

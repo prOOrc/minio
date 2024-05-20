@@ -446,6 +446,10 @@ var (
 			Value: "",
 		},
 		config.KV{
+			Key:   target.KafkaNameHeader,
+			Value: "main.JuiceFsEvent",
+		},
+		config.KV{
 			Key:   target.KafkaBrokers,
 			Value: "",
 		},
@@ -559,6 +563,11 @@ func GetNotifyKafka(kafkaKVS map[string]config.KVS) (map[string]target.KafkaArgs
 			topicEnv = topicEnv + config.Default + k
 		}
 
+		nameHeaderEnv := target.EnvKafkaNameHeader
+		if k != config.Default {
+			nameHeaderEnv = nameHeaderEnv + config.Default + k
+		}
+
 		queueDirEnv := target.EnvKafkaQueueDir
 		if k != config.Default {
 			queueDirEnv = queueDirEnv + config.Default + k
@@ -573,6 +582,7 @@ func GetNotifyKafka(kafkaKVS map[string]config.KVS) (map[string]target.KafkaArgs
 			Enable:     enabled,
 			Brokers:    brokers,
 			Topic:      env.Get(topicEnv, kv.Get(target.KafkaTopic)),
+			NameHeader: env.Get(nameHeaderEnv, kv.Get(target.KafkaNameHeader)),
 			QueueDir:   env.Get(queueDirEnv, kv.Get(target.KafkaQueueDir)),
 			QueueLimit: queueLimit,
 			Version:    env.Get(versionEnv, kv.Get(target.KafkaVersion)),

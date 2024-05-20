@@ -726,8 +726,6 @@ func handleCommonEnvVars() {
 	// in-place update is off.
 	globalInplaceUpdateDisabled = strings.EqualFold(env.Get(config.EnvUpdate, config.EnableOn), config.EnableOff)
 
-	globalNotificationSendToAll = strings.EqualFold(env.Get(config.EnvNotifySendToAll, config.EnableOff), config.EnableOn)
-
 	// Check if the supported credential env vars,
 	// "MINIO_ROOT_USER" and "MINIO_ROOT_PASSWORD" are provided
 	// Warn user if deprecated environment variables,

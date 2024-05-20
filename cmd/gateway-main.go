@@ -32,6 +32,7 @@ import (
 	"github.com/minio/cli"
 	"github.com/minio/madmin-go"
 	"github.com/minio/minio/internal/color"
+	"github.com/minio/minio/internal/event"
 	xhttp "github.com/minio/minio/internal/http"
 	"github.com/minio/minio/internal/logger"
 	"github.com/minio/pkg/certs"
@@ -318,6 +319,16 @@ func StartGateway(ctx *cli.Context, gw Gateway) {
 
 	if gatewayName == JuiceFSGateway {
 		logger.FatalIf(globalNotificationSys.InitBucketTargets(GlobalContext, newObject), "Unable to initialize bucket targets for notification system")
+		buckets, err := newObject.ListBuckets(GlobalContext)
+		if err != nil {
+			logger.Fatal(err, "Unable to list buckets")
+		}
+		rulesMap, err := event.GetRulesMapConfigFromEnv()
+		logger.FatalIf(err, "Unable to parse event config from env")
+		for _, bucket := range buckets {
+			logger.Info("Initializing notification system for %s", bucket)
+			globalNotificationSys.AddRulesMap(bucket.Name, rulesMap)
+		}
 	}
 
 	if globalCacheConfig.Enabled {

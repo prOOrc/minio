@@ -28,6 +28,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/google/uuid"
 	"github.com/minio/minio/internal/event"
 	xnet "github.com/minio/pkg/net"
 
@@ -39,6 +40,7 @@ import (
 const (
 	KafkaBrokers       = "brokers"
 	KafkaTopic         = "topic"
+	KafkaNameHeader    = "name_header"
 	KafkaQueueDir      = "queue_dir"
 	KafkaQueueLimit    = "queue_limit"
 	KafkaTLS           = "tls"
@@ -55,6 +57,7 @@ const (
 	EnvKafkaEnable        = "MINIO_NOTIFY_KAFKA_ENABLE"
 	EnvKafkaBrokers       = "MINIO_NOTIFY_KAFKA_BROKERS"
 	EnvKafkaTopic         = "MINIO_NOTIFY_KAFKA_TOPIC"
+	EnvKafkaNameHeader    = "MINIO_NOTIFY_KAFKA_NAME_HEADER"
 	EnvKafkaQueueDir      = "MINIO_NOTIFY_KAFKA_QUEUE_DIR"
 	EnvKafkaQueueLimit    = "MINIO_NOTIFY_KAFKA_QUEUE_LIMIT"
 	EnvKafkaTLS           = "MINIO_NOTIFY_KAFKA_TLS"
@@ -67,6 +70,10 @@ const (
 	EnvKafkaClientTLSCert = "MINIO_NOTIFY_KAFKA_CLIENT_TLS_CERT"
 	EnvKafkaClientTLSKey  = "MINIO_NOTIFY_KAFKA_CLIENT_TLS_KEY"
 	EnvKafkaVersion       = "MINIO_NOTIFY_KAFKA_VERSION"
+
+	UUIDHeaderKey      = "_watermill_message_uuid"
+	PartitionHeaderKey = "partition"
+	NameHeaderKey      = "name"
 )
 
 // KafkaArgs - Kafka target arguments.
@@ -74,6 +81,7 @@ type KafkaArgs struct {
 	Enable     bool        `json:"enable"`
 	Brokers    []xnet.Host `json:"brokers"`
 	Topic      string      `json:"topic"`
+	NameHeader string      `json:"nameHeader"`
 	QueueDir   string      `json:"queueDir"`
 	QueueLimit uint64      `json:"queueLimit"`
 	Version    string      `json:"version"`
@@ -175,10 +183,24 @@ func (target *KafkaTarget) send(eventData event.Event) error {
 		return err
 	}
 
+	headers := []sarama.RecordHeader{
+		{
+			Key:   []byte(UUIDHeaderKey),
+			Value: []byte(uuid.NewString()),
+		},
+		{
+			Key:   []byte(PartitionHeaderKey),
+			Value: []byte(key),
+		}, {
+			Key:   []byte(NameHeaderKey),
+			Value: []byte(target.args.NameHeader),
+		},
+	}
 	msg := sarama.ProducerMessage{
-		Topic: target.args.Topic,
-		Key:   sarama.StringEncoder(key),
-		Value: sarama.ByteEncoder(data),
+		Topic:   target.args.Topic,
+		Key:     sarama.StringEncoder(key),
+		Value:   sarama.ByteEncoder(data),
+		Headers: headers,
 	}
 
 	_, _, err = target.producer.SendMessage(&msg)

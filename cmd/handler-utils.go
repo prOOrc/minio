@@ -237,6 +237,14 @@ func extractReqParams(r *http.Request) map[string]string {
 		"sourceIPAddress": handlers.GetSourceIP(r),
 		// Add more fields here.
 	}
+	// JWT specific values
+	for k, v := range cred.Claims {
+		vStr, ok := v.(string)
+		if ok {
+			// Special case for STS users
+			m[k] = vStr
+		}
+	}
 	if _, ok := r.Header[xhttp.MinIOSourceReplicationRequest]; ok {
 		m[xhttp.MinIOSourceReplicationRequest] = ""
 	}

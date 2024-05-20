@@ -56,6 +56,10 @@ func SetNotifyKafka(s config.Config, name string, cfg target.KafkaArgs) error {
 			Value: cfg.Topic,
 		},
 		config.KV{
+			Key:   target.KafkaNameHeader,
+			Value: cfg.NameHeader,
+		},
+		config.KV{
 			Key:   target.KafkaQueueDir,
 			Value: cfg.QueueDir,
 		},

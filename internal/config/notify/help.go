@@ -179,6 +179,12 @@ var (
 			Type:        "string",
 		},
 		config.HelpKV{
+			Key:         target.KafkaNameHeader,
+			Description: "Kafka name header used for bucket notifications",
+			Optional:    true,
+			Type:        "string",
+		},
+		config.HelpKV{
 			Key:         target.KafkaSASLUsername,
 			Description: "username for SASL/PLAIN or SASL/SCRAM authentication",
 			Optional:    true,
