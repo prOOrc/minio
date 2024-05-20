@@ -20,7 +20,6 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
-	"github.com/juicedata/juicefs/pkg/fs" //nolint:gofumpt
 	"net"
 	"net/http"
 	"net/url"
@@ -34,7 +33,10 @@ import (
 	"syscall"
 	"time" //nolint:gofumpt
 
+	"github.com/juicedata/juicefs/pkg/fs" //nolint:gofumpt
+
 	"github.com/erikdubbelboer/gspt"
+	"github.com/grafana/pyroscope-go"
 	"github.com/juicedata/juicefs/pkg/chunk"
 	"github.com/juicedata/juicefs/pkg/meta"
 	"github.com/juicedata/juicefs/pkg/metric"
@@ -47,7 +49,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/pyroscope-io/client/pyroscope"
 	"github.com/sirupsen/logrus"
 )
 
