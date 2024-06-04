@@ -88,6 +88,10 @@ For more information, please visit: https://juicefs.com/docs/community/s3_gatewa
 			Name:  "multi-buckets",
 			Usage: "use top level of directories as buckets",
 		},
+		&cli.StringFlag{
+			Name:  "bucket-name",
+			Usage: "use this bucket name instead of JuiceFS name",
+		},
 		&cli.BoolFlag{
 			Name:  "keep-etag",
 			Usage: "keep the ETag for uploaded objects",
@@ -125,6 +129,7 @@ func juicefsGatewayMain(ctx *cli.Context) {
 
 type Config struct {
 	MultiBucket bool
+	Bucket      string
 	KeepEtag    bool
 	Umask       uint16
 }
@@ -151,7 +156,21 @@ func (n *JfsObjects) NewGatewayLayer(creds madmin.Credentials) (minio.ObjectLaye
 		logger.Fatalf("invalid umask %s: %s", n.ctx.String("umask"), err)
 	}
 	mctx = meta.NewContext(uint32(os.Getpid()), uint32(os.Getuid()), []uint32{uint32(os.Getgid())})
-	jfsObj := &JfsObjects{fs: jfs, conf: conf, listPool: minio.NewTreeWalkPool(time.Minute * 30), gConf: &Config{MultiBucket: n.ctx.Bool("multi-buckets"), KeepEtag: n.ctx.Bool("keep-etag"), Umask: uint16(umask)}}
+	bucket := n.ctx.String("bucket-name")
+	if bucket == "" {
+		bucket = conf.Format.Name
+	}
+	jfsObj := &JfsObjects{
+		fs:       jfs,
+		conf:     conf,
+		listPool: minio.NewTreeWalkPool(time.Minute * 30),
+		gConf: &Config{
+			MultiBucket: n.ctx.Bool("multi-buckets"),
+			Bucket:      bucket,
+			KeepEtag:    n.ctx.Bool("keep-etag"),
+			Umask:       uint16(umask),
+		},
+	}
 	go jfsObj.cleanup()
 	return jfsObj, nil
 }
@@ -242,14 +261,14 @@ func (n *JfsObjects) isValidBucketName(bucket string) error {
 	if s3utils.CheckValidBucketNameStrict(bucket) != nil {
 		return minio.BucketNameInvalid{Bucket: bucket}
 	}
-	if !n.gConf.MultiBucket && bucket != n.conf.Format.Name {
+	if !n.gConf.MultiBucket && bucket != n.gConf.Bucket {
 		return minio.BucketNotFound{Bucket: bucket}
 	}
 	return nil
 }
 
 func (n *JfsObjects) path(p ...string) string {
-	if len(p) > 0 && p[0] == n.conf.Format.Name {
+	if len(p) > 0 && p[0] == n.gConf.Bucket {
 		p = p[1:]
 	}
 	return sep + minio.PathJoin(p...)
@@ -318,7 +337,7 @@ func (n *JfsObjects) ListBuckets(ctx context.Context) (buckets []minio.BucketInf
 			return nil, jfsToObjectErr(ctx, eno)
 		}
 		buckets = []minio.BucketInfo{{
-			Name:    n.conf.Format.Name,
+			Name:    n.gConf.Bucket,
 			Created: time.Unix(fi.Atime()/1000, 0),
 		}}
 		return buckets, nil
