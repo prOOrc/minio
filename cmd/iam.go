@@ -1593,6 +1593,31 @@ func (sys *IAMSys) IsAllowed(args iampolicy.Args) bool {
 	return sys.GetCombinedPolicy(policies...).IsAllowed(args)
 }
 
+const defaultChunkSize = 1000 // Adjust this value based on your needs and system capacity
+
+func (sys *IAMSys) IsAllowedBatch(argsList []iampolicy.Args) []bool {
+	results := make([]bool, len(argsList))
+	for i := 0; i < len(argsList); i += defaultChunkSize {
+		chunkEnd := i+defaultChunkSize
+		if len(argsList) < chunkEnd {
+			chunkEnd = len(argsList)
+		}
+		chunk := argsList[i:chunkEnd] // Extract chunk of IDs
+		wg := sync.WaitGroup{}
+		for j, args := range chunk {
+			wg.Add(1)
+			go func(k int, args iampolicy.Args) {
+				defer wg.Done()
+				isAllowed := sys.IsAllowed(args)
+				results[k] = isAllowed
+			}(j, args)
+		}
+
+		wg.Wait()
+	}
+	return results
+}
+
 // EnableLDAPSys - enable ldap system users type.
 func (sys *IAMSys) EnableLDAPSys() {
 	sys.usersSysType = LDAPUsersSysType

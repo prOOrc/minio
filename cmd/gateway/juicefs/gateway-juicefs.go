@@ -492,9 +492,10 @@ func (n *JfsObjects) ListObjects(ctx context.Context, bucket, prefix, marker, de
 		listDir = func(bucket, prefixDir, prefixEntry string) (emptyDir bool, entries []string, delayIsLeaf bool) {
 			emptyDir, entries, delayIsLeaf = originListDir(bucket, prefixDir, prefixEntry)
 			filteredEntries := make([]string, 0, len(entries))
-			for _, entry := range entries {
+			argsList := make([]iampolicy.Args, len(entries))
+			for i, entry := range entries {
 				objectName := prefixDir + entry
-				isAllowed := globalIAMSys.IsAllowed(iampolicy.Args{
+				argsList[i] = iampolicy.Args{
 					AccountName:     cred.AccessKey,
 					Groups:          cred.Groups,
 					Action:          iampolicy.Action(action),
@@ -503,7 +504,11 @@ func (n *JfsObjects) ListObjects(ctx context.Context, bucket, prefix, marker, de
 					ObjectName:      objectName,
 					IsOwner:         isOwner,
 					Claims:          cred.Claims,
-				})
+				}
+			}
+			isAllowedList := globalIAMSys.IsAllowedBatch(argsList)
+			for i, entry := range entries {
+				isAllowed := isAllowedList[i]
 				if isAllowed {
 					filteredEntries = append(filteredEntries, entry)
 				}
