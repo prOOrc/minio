@@ -19,6 +19,7 @@ package opa
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -31,11 +32,13 @@ import (
 
 // Env IAM OPA URL
 const (
-	URL       = "url"
-	AuthToken = "auth_token"
+	URL             = "url"
+	AuthToken       = "auth_token"
+	AuthTokenHeader = "auth_token_header"
 
-	EnvPolicyOpaURL       = "MINIO_POLICY_OPA_URL"
-	EnvPolicyOpaAuthToken = "MINIO_POLICY_OPA_AUTH_TOKEN"
+	EnvPolicyOpaURL             = "MINIO_POLICY_OPA_URL"
+	EnvPolicyOpaAuthToken       = "MINIO_POLICY_OPA_AUTH_TOKEN"
+	EnvPolicyOpaAuthTokenHeader = "MINIO_POLICY_OPA_AUTH_TOKEN_HEADER"
 )
 
 // DefaultKVS - default config for OPA config
@@ -49,15 +52,20 @@ var (
 			Key:   AuthToken,
 			Value: "",
 		},
+		config.KV{
+			Key:   AuthTokenHeader,
+			Value: "",
+		},
 	}
 )
 
 // Args opa general purpose policy engine configuration.
 type Args struct {
-	URL         *xnet.URL             `json:"url"`
-	AuthToken   string                `json:"authToken"`
-	Transport   http.RoundTripper     `json:"-"`
-	CloseRespFn func(r io.ReadCloser) `json:"-"`
+	URL             *xnet.URL             `json:"url"`
+	AuthToken       string                `json:"authToken"`
+	AuthTokenHeader string                `json:"authTokenHeader"`
+	Transport       http.RoundTripper     `json:"-"`
+	CloseRespFn     func(r io.ReadCloser) `json:"-"`
 }
 
 // Validate - validate opa configuration params.
@@ -68,8 +76,12 @@ func (a *Args) Validate() error {
 	}
 
 	req.Header.Set("Content-Type", "application/json")
+	authTokenHeader := "Authorization"
+	if a.AuthTokenHeader != "" {
+		authTokenHeader = a.AuthTokenHeader
+	}
 	if a.AuthToken != "" {
-		req.Header.Set("Authorization", a.AuthToken)
+		req.Header.Set(authTokenHeader, a.AuthToken)
 	}
 
 	client := &http.Client{Transport: a.Transport}
@@ -133,15 +145,21 @@ func LookupConfig(kv config.KVS, transport *http.Transport, closeRespFn func(io.
 		authToken = env.Get(EnvPolicyOpaAuthToken, kv.Get(AuthToken))
 	}
 
+	authTokenHeader := env.Get(EnvIamOpaAuthTokenHeader, "")
+	if authTokenHeader == "" {
+		authTokenHeader = env.Get(EnvPolicyOpaAuthTokenHeader, kv.Get(AuthTokenHeader))
+	}
+
 	u, err := xnet.ParseHTTPURL(opaURL)
 	if err != nil {
 		return args, err
 	}
 	args = Args{
-		URL:         u,
-		AuthToken:   authToken,
-		Transport:   transport,
-		CloseRespFn: closeRespFn,
+		URL:             u,
+		AuthToken:       authToken,
+		AuthTokenHeader: authTokenHeader,
+		Transport:       transport,
+		CloseRespFn:     closeRespFn,
 	}
 	if err = args.Validate(); err != nil {
 		return args, err
@@ -182,8 +200,12 @@ func (o *Opa) IsAllowed(args iampolicy.Args) (bool, error) {
 	}
 
 	req.Header.Set("Content-Type", "application/json")
+	authTokenHeader := "Authorization"
+	if o.args.AuthTokenHeader != "" {
+		authTokenHeader = o.args.AuthTokenHeader
+	}
 	if o.args.AuthToken != "" {
-		req.Header.Set("Authorization", o.args.AuthToken)
+		req.Header.Set(authTokenHeader, o.args.AuthToken)
 	}
 
 	resp, err := o.client.Do(req)
@@ -191,6 +213,9 @@ func (o *Opa) IsAllowed(args iampolicy.Args) (bool, error) {
 		return false, err
 	}
 	defer o.args.CloseRespFn(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return false, fmt.Errorf("invalid status: %d", resp.StatusCode)
+	}
 
 	// Read the body to be saved later.
 	opaRespBytes, err := ioutil.ReadAll(resp.Body)
@@ -220,6 +245,81 @@ func (o *Opa) IsAllowed(args iampolicy.Args) (bool, error) {
 		var resultAllow opaResultAllow
 		if err = json.NewDecoder(respBody).Decode(&resultAllow); err != nil {
 			return false, err
+		}
+		return resultAllow.Result.Allow, nil
+	}
+
+	return result.Result, nil
+}
+
+// IsAllowedBatch - checks given policy args is allowed to continue the REST API.
+func (o *Opa) IsAllowedBatch(args iampolicy.Args, objectNames []string) (results []bool, err error) {
+	results = make([]bool, len(objectNames))
+	if o == nil {
+		return results, nil
+	}
+
+	// OPA input
+	body := make(map[string]interface{})
+	body["input"] = args
+	body["objects"] = objectNames
+
+	inputBytes, err := json.Marshal(body)
+	if err != nil {
+		return results, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, o.args.URL.String(), bytes.NewReader(inputBytes))
+	if err != nil {
+		return results, err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	authTokenHeader := "Authorization"
+	if o.args.AuthTokenHeader != "" {
+		authTokenHeader = o.args.AuthTokenHeader
+	}
+	if o.args.AuthToken != "" {
+		req.Header.Set(authTokenHeader, o.args.AuthToken)
+	}
+
+	resp, err := o.client.Do(req)
+	if err != nil {
+		return results, err
+	}
+	defer o.args.CloseRespFn(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return results, fmt.Errorf("invalid status: %d", resp.StatusCode)
+	}
+
+	// Read the body to be saved later.
+	opaRespBytes, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return results, err
+	}
+
+	// Handle large OPA responses when OPA URL is of
+	// form http://localhost:8181/v1/data/httpapi/authz
+	type opaResultAllow struct {
+		Result struct {
+			Allow []bool `json:"allow"`
+		} `json:"result"`
+	}
+
+	// Handle simpler OPA responses when OPA URL is of
+	// form http://localhost:8181/v1/data/httpapi/authz/allow
+	type opaResult struct {
+		Result []bool `json:"result"`
+	}
+
+	respBody := bytes.NewReader(opaRespBytes)
+
+	var result opaResult
+	if err = json.NewDecoder(respBody).Decode(&result); err != nil {
+		respBody.Seek(0, 0)
+		var resultAllow opaResultAllow
+		if err = json.NewDecoder(respBody).Decode(&resultAllow); err != nil {
+			return results, err
 		}
 		return resultAllow.Result.Allow, nil
 	}

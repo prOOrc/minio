@@ -22,8 +22,9 @@ import (
 
 // Legacy OPA envs
 const (
-	EnvIamOpaURL       = "MINIO_IAM_OPA_URL"
-	EnvIamOpaAuthToken = "MINIO_IAM_OPA_AUTHTOKEN"
+	EnvIamOpaURL             = "MINIO_IAM_OPA_URL"
+	EnvIamOpaAuthToken       = "MINIO_IAM_OPA_AUTHTOKEN"
+	EnvIamOpaAuthTokenHeader = "MINIO_IAM_OPA_AUTHTOKEN_HEADER"
 )
 
 // SetPolicyOPAConfig - One time migration code needed, for migrating from older config to new for PolicyOPAConfig.
@@ -40,6 +41,10 @@ func SetPolicyOPAConfig(s config.Config, opaArgs Args) {
 		config.KV{
 			Key:   AuthToken,
 			Value: opaArgs.AuthToken,
+		},
+		config.KV{
+			Key:   AuthTokenHeader,
+			Value: opaArgs.AuthTokenHeader,
 		},
 	}
 }

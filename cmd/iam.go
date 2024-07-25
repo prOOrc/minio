@@ -2331,6 +2331,41 @@ func (sys *IAMSys) IsAllowed(args iampolicy.Args) bool {
 	return sys.GetCombinedPolicy(policies...).IsAllowed(args)
 }
 
+const defaultChunkSize = 1000 // Adjust this value based on your needs and system capacity
+
+func (sys *IAMSys) IsAllowedBatch(args iampolicy.Args, objectNames []string) []bool {
+	// If opa is configured, use OPA always.
+	if globalPolicyOPA != nil {
+		results, err := globalPolicyOPA.IsAllowedBatch(args, objectNames)
+		if err != nil {
+			logger.LogIf(GlobalContext, err)
+		}
+		return results
+	}
+	results := make([]bool, len(objectNames))
+	for i := 0; i < len(objectNames); i += defaultChunkSize {
+		chunkEnd := i+defaultChunkSize
+		if len(objectNames) < chunkEnd {
+			chunkEnd = len(objectNames)
+		}
+		chunk := objectNames[i:chunkEnd] // Extract chunk of IDs
+		wg := sync.WaitGroup{}
+		for j, objectName := range chunk {
+			wg.Add(1)
+			go func(k int, o string) {
+				defer wg.Done()
+				a := args
+				a.ObjectName = o
+				isAllowed := sys.IsAllowed(a)
+				results[k] = isAllowed
+			}(j, objectName)
+		}
+
+		wg.Wait()
+	}
+	return results
+}
+
 // Set default canned policies only if not already overridden by users.
 func setDefaultCannedPolicies(policies map[string]iampolicy.Policy) {
 	_, ok := policies["writeonly"]
