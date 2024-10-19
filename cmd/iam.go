@@ -1595,22 +1595,32 @@ func (sys *IAMSys) IsAllowed(args iampolicy.Args) bool {
 
 const defaultChunkSize = 1000 // Adjust this value based on your needs and system capacity
 
-func (sys *IAMSys) IsAllowedBatch(argsList []iampolicy.Args) []bool {
-	results := make([]bool, len(argsList))
-	for i := 0; i < len(argsList); i += defaultChunkSize {
-		chunkEnd := i+defaultChunkSize
-		if len(argsList) < chunkEnd {
-			chunkEnd = len(argsList)
+func (sys *IAMSys) IsAllowedBatch(args iampolicy.Args, objectNames []string) []bool {
+	// If opa is configured, use OPA always.
+	if globalPolicyOPA != nil {
+		results, err := globalPolicyOPA.IsAllowedBatch(args, objectNames)
+		if err != nil {
+			logger.LogIf(GlobalContext, err)
 		}
-		chunk := argsList[i:chunkEnd] // Extract chunk of IDs
+		return results
+	}
+	results := make([]bool, len(objectNames))
+	for i := 0; i < len(objectNames); i += defaultChunkSize {
+		chunkEnd := i+defaultChunkSize
+		if len(objectNames) < chunkEnd {
+			chunkEnd = len(objectNames)
+		}
+		chunk := objectNames[i:chunkEnd] // Extract chunk of IDs
 		wg := sync.WaitGroup{}
-		for j, args := range chunk {
+		for j, objectName := range chunk {
 			wg.Add(1)
-			go func(k int, args iampolicy.Args) {
+			go func(k int, o string) {
 				defer wg.Done()
-				isAllowed := sys.IsAllowed(args)
+				a := args
+				a.ObjectName = o
+				isAllowed := sys.IsAllowed(a)
 				results[k] = isAllowed
-			}(j, args)
+			}(j, objectName)
 		}
 
 		wg.Wait()
