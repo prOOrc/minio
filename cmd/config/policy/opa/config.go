@@ -230,3 +230,74 @@ func (o *Opa) IsAllowed(args iampolicy.Args) (bool, error) {
 
 	return result.Result, nil
 }
+
+// IsAllowedBatch - checks given policy args is allowed to continue the REST API.
+func (o *Opa) IsAllowedBatch(args iampolicy.Args, objectNames []string) (results []bool, err error) {
+	results = make([]bool, len(objectNames))
+	if o == nil {
+		return results, nil
+	}
+
+	// OPA input
+	body := make(map[string]interface{})
+	body["input"] = args
+	body["objects"] = objectNames
+
+	inputBytes, err := json.Marshal(body)
+	if err != nil {
+		return results, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, o.args.URL.String(), bytes.NewReader(inputBytes))
+	if err != nil {
+		return results, err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	if o.args.AuthToken != "" {
+		req.Header.Set("Authorization", o.args.AuthToken)
+	}
+
+	resp, err := o.client.Do(req)
+	if err != nil {
+		return results, err
+	}
+	defer o.args.CloseRespFn(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return results, fmt.Errorf("invalid status: %d", resp.StatusCode)
+	}
+
+	// Read the body to be saved later.
+	opaRespBytes, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return results, err
+	}
+
+	// Handle large OPA responses when OPA URL is of
+	// form http://localhost:8181/v1/data/httpapi/authz
+	type opaResultAllow struct {
+		Result struct {
+			Allow []bool `json:"allow"`
+		} `json:"result"`
+	}
+
+	// Handle simpler OPA responses when OPA URL is of
+	// form http://localhost:8181/v1/data/httpapi/authz/allow
+	type opaResult struct {
+		Result []bool `json:"result"`
+	}
+
+	respBody := bytes.NewReader(opaRespBytes)
+
+	var result opaResult
+	if err = json.NewDecoder(respBody).Decode(&result); err != nil {
+		respBody.Seek(0, 0)
+		var resultAllow opaResultAllow
+		if err = json.NewDecoder(respBody).Decode(&resultAllow); err != nil {
+			return results, err
+		}
+		return resultAllow.Result.Allow, nil
+	}
+
+	return result.Result, nil
+}
