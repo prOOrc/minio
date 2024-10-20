@@ -22,6 +22,7 @@ import (
 	"sync"
 
 	humanize "github.com/dustin/go-humanize"
+	iampolicy "github.com/minio/minio/pkg/iam/policy"
 	"github.com/minio/minio/pkg/sync/errgroup"
 )
 
@@ -91,6 +92,7 @@ func listObjectsNonSlash(ctx context.Context, bucket, prefix, marker, delimiter 
 	defer close(endWalkCh)
 	recursive := true
 	walkResultCh := startTreeWalk(ctx, bucket, prefix, "", recursive, listDir, isLeaf, isLeafDir, endWalkCh)
+	walkResultCh = startFilterWalkResultCh(ctx, walkResultCh, bucket)
 
 	var objInfos []ObjectInfo
 	var eof bool
@@ -274,6 +276,7 @@ func listObjects(ctx context.Context, obj ObjectLayer, bucket, prefix, marker, d
 		endWalkCh = make(chan struct{})
 		walkResultCh = startTreeWalk(ctx, bucket, prefix, marker, recursive, listDir, isLeaf, isLeafDir, endWalkCh)
 	}
+	walkResultCh = startFilterWalkResultCh(ctx, walkResultCh, bucket)
 
 	var eof bool
 	var nextMarker string
@@ -383,4 +386,87 @@ func listObjects(ctx context.Context, obj ObjectLayer, bucket, prefix, marker, d
 
 	// Success.
 	return result, nil
+}
+
+func startFilterWalkResultCh(ctx context.Context, walkResultCh chan TreeWalkResult, bucket string) chan TreeWalkResult {
+	// return walkResultCh
+	isOwner := GetIsOwner(ctx)
+	if !isOwner {
+		originalWalkResultCh := walkResultCh
+		walkResultCh = make(chan TreeWalkResult, maxObjectList)
+		cred := GetCredentials(ctx)
+		conditionValues := GetConditionValues(ctx)
+		claims := GetClaims(ctx)
+		action := iampolicy.GetObjectAction
+		args := iampolicy.Args{
+			AccountName:     cred.AccessKey,
+			Groups:          cred.Groups,
+			Action:          iampolicy.Action(action),
+			BucketName:      bucket,
+			ConditionValues: conditionValues,
+			IsOwner:         isOwner,
+			Claims:          claims,
+		}
+
+		go func() {
+			filterWalkResultCh(args, originalWalkResultCh, walkResultCh)
+			close(walkResultCh)
+		}()
+	}
+	return walkResultCh
+}
+
+const batchSize = 1000
+
+func filterWalkResultCh(args iampolicy.Args, sourceCh chan TreeWalkResult, targetCh chan TreeWalkResult) {
+	var batch = make([]TreeWalkResult, 0, batchSize)
+	var eof bool
+	for {
+		v, ok := <-sourceCh
+		if ok {
+			batch = append(batch, v)
+			if v.end {
+				eof = true
+			}
+		} else {
+			eof = true
+		}
+		if len(batch) == batchSize || eof {
+			filterAndSendWalkResults(args, batch, targetCh)
+			if eof {
+				return
+			}
+			batch = make([]TreeWalkResult, 0, batchSize) // reset
+		}
+	}
+}
+
+func filterAndSendWalkResults(args iampolicy.Args, treaWalkResults []TreeWalkResult, walkResultCh chan TreeWalkResult) {
+	fitlered := filterWalkResults(args, treaWalkResults)
+	sendWalkResults(fitlered, walkResultCh)
+}
+
+func filterWalkResults(args iampolicy.Args, treaWalkResults []TreeWalkResult) []TreeWalkResult {
+	if len(treaWalkResults) == 0 {
+		return treaWalkResults
+	}
+	objectNames := make([]string, len(treaWalkResults))
+	for i, treaWalkResult := range treaWalkResults {
+		objectNames[i] = treaWalkResult.entry.Name
+	}
+	outTreaWalkResults := make([]TreeWalkResult, 0, len(treaWalkResults))
+	isAllowedList := globalIAMSys.IsAllowedBatch(args, objectNames)
+	for i, treaWalkResult := range treaWalkResults {
+		isAllowed := isAllowedList[i]
+		if isAllowed {
+			outTreaWalkResults = append(outTreaWalkResults, treaWalkResult)
+		}
+	}
+	return outTreaWalkResults
+}
+
+func sendWalkResults(treaWalkResults []TreeWalkResult, walkResultCh chan TreeWalkResult) {
+	for _, treaWalkResult := range treaWalkResults {
+		walkResultCh <- treaWalkResult
+	}
 }
