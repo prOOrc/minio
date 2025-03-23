@@ -32,11 +32,13 @@ import (
 
 // Env IAM OPA URL
 const (
-	URL       = "url"
-	AuthToken = "auth_token"
+	URL             = "url"
+	AuthToken       = "auth_token"
+	AuthTokenHeader = "auth_token_header"
 
-	EnvPolicyOpaURL       = "MINIO_POLICY_OPA_URL"
-	EnvPolicyOpaAuthToken = "MINIO_POLICY_OPA_AUTH_TOKEN"
+	EnvPolicyOpaURL             = "MINIO_POLICY_OPA_URL"
+	EnvPolicyOpaAuthToken       = "MINIO_POLICY_OPA_AUTH_TOKEN"
+	EnvPolicyOpaAuthTokenHeader = "MINIO_POLICY_OPA_AUTH_TOKEN_HEADER"
 )
 
 // DefaultKVS - default config for OPA config
@@ -50,15 +52,20 @@ var (
 			Key:   AuthToken,
 			Value: "",
 		},
+		config.KV{
+			Key:   AuthTokenHeader,
+			Value: "",
+		},
 	}
 )
 
 // Args opa general purpose policy engine configuration.
 type Args struct {
-	URL         *xnet.URL             `json:"url"`
-	AuthToken   string                `json:"authToken"`
-	Transport   http.RoundTripper     `json:"-"`
-	CloseRespFn func(r io.ReadCloser) `json:"-"`
+	URL             *xnet.URL             `json:"url"`
+	AuthToken       string                `json:"authToken"`
+	AuthTokenHeader string                `json:"authTokenHeader"`
+	Transport       http.RoundTripper     `json:"-"`
+	CloseRespFn     func(r io.ReadCloser) `json:"-"`
 }
 
 // Validate - validate opa configuration params.
@@ -69,8 +76,12 @@ func (a *Args) Validate() error {
 	}
 
 	req.Header.Set("Content-Type", "application/json")
+	authTokenHeader := "Authorization"
+	if a.AuthTokenHeader != "" {
+		authTokenHeader = a.AuthTokenHeader
+	}
 	if a.AuthToken != "" {
-		req.Header.Set("Authorization", a.AuthToken)
+		req.Header.Set(authTokenHeader, a.AuthToken)
 	}
 
 	client := &http.Client{Transport: a.Transport}
@@ -134,15 +145,21 @@ func LookupConfig(kv config.KVS, transport *http.Transport, closeRespFn func(io.
 		authToken = env.Get(EnvPolicyOpaAuthToken, kv.Get(AuthToken))
 	}
 
+	authTokenHeader := env.Get(EnvIamOpaAuthTokenHeader, "")
+	if authTokenHeader == "" {
+		authTokenHeader = env.Get(EnvPolicyOpaAuthTokenHeader, kv.Get(AuthTokenHeader))
+	}
+
 	u, err := xnet.ParseHTTPURL(opaURL)
 	if err != nil {
 		return args, err
 	}
 	args = Args{
-		URL:         u,
-		AuthToken:   authToken,
-		Transport:   transport,
-		CloseRespFn: closeRespFn,
+		URL:             u,
+		AuthToken:       authToken,
+		AuthTokenHeader: authTokenHeader,
+		Transport:       transport,
+		CloseRespFn:     closeRespFn,
 	}
 	if err = args.Validate(); err != nil {
 		return args, err
@@ -183,8 +200,12 @@ func (o *Opa) IsAllowed(args iampolicy.Args) (bool, error) {
 	}
 
 	req.Header.Set("Content-Type", "application/json")
+	authTokenHeader := "Authorization"
+	if o.args.AuthTokenHeader != "" {
+		authTokenHeader = o.args.AuthTokenHeader
+	}
 	if o.args.AuthToken != "" {
-		req.Header.Set("Authorization", o.args.AuthToken)
+		req.Header.Set(authTokenHeader, o.args.AuthToken)
 	}
 
 	resp, err := o.client.Do(req)
@@ -254,8 +275,12 @@ func (o *Opa) IsAllowedBatch(args iampolicy.Args, objectNames []string) (results
 	}
 
 	req.Header.Set("Content-Type", "application/json")
+	authTokenHeader := "Authorization"
+	if o.args.AuthTokenHeader != "" {
+		authTokenHeader = o.args.AuthTokenHeader
+	}
 	if o.args.AuthToken != "" {
-		req.Header.Set("Authorization", o.args.AuthToken)
+		req.Header.Set(authTokenHeader, o.args.AuthToken)
 	}
 
 	resp, err := o.client.Do(req)
