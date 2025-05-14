@@ -324,10 +324,15 @@ func (api objectAPIHandlers) ListObjectsV1Handler(w http.ResponseWriter, r *http
 		return
 	}
 
-	if s3Error := checkRequestAuthType(ctx, r, policy.ListBucketAction, bucket, ""); s3Error != ErrNone {
+	cred, conditionValues, claims, isOwner, s3Error := checkRequestAuthTypeCredentialConditionValues(ctx, r, policy.ListBucketAction, bucket, "")
+	if s3Error != ErrNone {
 		writeErrorResponse(ctx, w, errorCodes.ToAPIErr(s3Error), r.URL, guessIsBrowserReq(r))
 		return
 	}
+	ctx = SetCredentials(ctx, cred)
+	ctx = SetIsOwner(ctx, isOwner)
+	ctx = SetConditionValues(ctx, conditionValues)
+	ctx = SetClaims(ctx, claims)
 
 	// Extract all the litsObjectsV1 query params to their native values.
 	prefix, marker, delimiter, maxKeys, encodingType, s3Error := getListObjectsV1Args(r.URL.Query())
